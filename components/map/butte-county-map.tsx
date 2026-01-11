@@ -441,11 +441,6 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
           )
         })}
       </div>
-
-      {/* Attribution */}
-      <div className="absolute bottom-4 right-4 z-10 rounded bg-white/80 px-2 py-1 text-[10px] text-gray-600">
-        Map data © Butte County GIS, Esri
-      </div>
     </div>
   )
 }

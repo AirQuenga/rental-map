@@ -128,7 +128,7 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
               <Map className="h-4 w-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-card-foreground">Butte County Rental Atlas</h1>
+              <h1 className="text-lg font-bold text-card-foreground">Butte County Rental Map - Made by Marcel L. Quenga</h1>
             </div>
           </div>
         </div>
