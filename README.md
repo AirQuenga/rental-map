@@ -1,4 +1,4 @@
-# Rental market map
+# Rental Map
 
 *Automatically synced with your [v0.app](https://v0.app) deployments*
 
@@ -15,6 +15,7 @@ Any changes you make to your deployed app will be automatically pushed to this r
 Your project is live at:
 
 **[https://vercel.com/airquenga-7484s-projects/v0-rental-market-map](https://vercel.com/airquenga-7484s-projects/v0-rental-market-map)**
+**[https://v0-rental-market-map.vercel.app/](https://v0-rental-market-map.vercel.app/)**
 
 ## Build your app
 

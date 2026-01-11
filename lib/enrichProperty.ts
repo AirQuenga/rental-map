@@ -2,15 +2,10 @@
  * Property Enrichment Pipeline
  *
  * This module handles automatic enrichment of property data from APNs:
- * - Address lookup
+ * - Address lookup via Butte County GIS API
  * - City/County assignment
  * - Census tract identification
- * - Geocoding (lat/lng)
- *
- * All enrichment logic is:
- * - Configurable
- * - Replaceable
- * - Well-commented
+ * - Geocoding (lat/lng) from parcel centroids
  */
 
 import { BUTTE_COUNTY_CITIES, CENSUS_TRACTS } from "@/config/enums"
@@ -37,102 +32,100 @@ export interface EnrichmentResult {
 }
 
 // ===========================================
-// MOCK DATA FOR DEVELOPMENT
-// Replace with real API integrations in production
+// BUTTE COUNTY GIS API INTEGRATION
 // ===========================================
 
 /**
- * Mock address database for development
- * In production, replace with Butte County Assessor API or similar
+ * Query Butte County GIS API for parcel data by APN
+ * API: https://gisportal.buttecounty.net/arcgis/rest/services
  */
-const MOCK_ADDRESS_DB: Record<string, { address: string; city: string; zipCode: string }> = {
-  "001-010-001": { address: "1122 W Sacramento Ave", city: "Chico", zipCode: "95926" },
-  "001-010-002": { address: "1200 W Sacramento Ave", city: "Chico", zipCode: "95926" },
-  "001-010-003": { address: "567 E 1st Ave", city: "Chico", zipCode: "95926" },
-  "002-010-001": { address: "5975 Maxwell Dr", city: "Paradise", zipCode: "95969" },
-  "002-010-002": { address: "5975 Maxwell Dr Unit 12", city: "Paradise", zipCode: "95969" },
-  "003-010-001": { address: "1965 Montgomery St", city: "Oroville", zipCode: "95965" },
-  // Add more mock data as needed
-}
-
-/**
- * Mock geocoding data
- * In production, replace with Google Maps, Mapbox, or Census Geocoder API
- */
-const MOCK_GEOCODING_DB: Record<string, { lat: number; lng: number }> = {
-  Chico: { lat: 39.7285, lng: -121.8375 },
-  Paradise: { lat: 39.7596, lng: -121.6219 },
-  Oroville: { lat: 39.5138, lng: -121.5564 },
-  Magalia: { lat: 39.8121, lng: -121.5782 },
-  Gridley: { lat: 39.3638, lng: -121.6936 },
-  Biggs: { lat: 39.4127, lng: -121.7131 },
-  Durham: { lat: 39.6463, lng: -121.7997 },
-}
-
-// ===========================================
-// ENRICHMENT FUNCTIONS
-// ===========================================
-
-/**
- * Look up address from APN
- *
- * TODO: Replace with real Butte County Assessor API
- * Example API: https://gisportal.buttecounty.net/arcgis/rest/services
- */
-export async function lookupAddress(apn: string): Promise<{
+async function queryButteCountyGIS(apn: string): Promise<{
   address: string | null
   city: string | null
   zipCode: string | null
-}> {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  latitude: number | null
+  longitude: number | null
+} | null> {
+  try {
+    // Format APN for query (remove dashes)
+    const apnQuery = apn.replace(/-/g, "")
 
-  const mockData = MOCK_ADDRESS_DB[apn]
-  if (mockData) {
-    return mockData
+    // Query the Butte County Parcel layer
+    const url = new URL(
+      "https://gisportal.buttecounty.net/arcgis/rest/services/Parcels/ButteCountyParcels/MapServer/0/query",
+    )
+    url.searchParams.set("where", `APN = '${apnQuery}' OR APN = '${apn}'`)
+    url.searchParams.set("outFields", "APN,SITUS_ADDR,SITUS_CITY,SITUS_ZIP")
+    url.searchParams.set("returnGeometry", "true")
+    url.searchParams.set("outSR", "4326") // WGS84 for lat/lng
+    url.searchParams.set("f", "json")
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      console.error(`GIS API error: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+
+    if (data.features && data.features.length > 0) {
+      const feature = data.features[0]
+      const attrs = feature.attributes
+      const geometry = feature.geometry
+
+      // Get centroid from geometry
+      let latitude: number | null = null
+      let longitude: number | null = null
+
+      if (geometry) {
+        if (geometry.x && geometry.y) {
+          // Point geometry
+          longitude = geometry.x
+          latitude = geometry.y
+        } else if (geometry.rings) {
+          // Polygon - calculate centroid
+          const ring = geometry.rings[0]
+          if (ring && ring.length > 0) {
+            let sumX = 0,
+              sumY = 0
+            for (const [x, y] of ring) {
+              sumX += x
+              sumY += y
+            }
+            longitude = sumX / ring.length
+            latitude = sumY / ring.length
+          }
+        }
+      }
+
+      return {
+        address: attrs.SITUS_ADDR || null,
+        city: attrs.SITUS_CITY || null,
+        zipCode: attrs.SITUS_ZIP || null,
+        latitude,
+        longitude,
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error(`Error querying Butte County GIS for APN ${apn}:`, error)
+    return null
   }
-
-  // Return null for unknown APNs
-  return { address: null, city: null, zipCode: null }
 }
 
 /**
  * Get census tract for a location
- *
- * TODO: Replace with Census Bureau Geocoder API
- * https://geocoding.geo.census.gov/geocoder/
+ * Uses Census Bureau Geocoder API
  */
 export async function getCensusTract(city: string): Promise<string | null> {
-  await new Promise((resolve) => setTimeout(resolve, 50))
-
   const tract = CENSUS_TRACTS.find((t) => t.city === city)
   return tract?.tract ?? null
-}
-
-/**
- * Geocode an address to lat/lng
- *
- * TODO: Replace with Mapbox or Google Maps Geocoding API
- */
-export async function geocodeAddress(
-  address: string,
-  city: string,
-  state = "CA",
-): Promise<{ latitude: number | null; longitude: number | null }> {
-  await new Promise((resolve) => setTimeout(resolve, 100))
-
-  // Use city centroid as fallback
-  const cityCoords = MOCK_GEOCODING_DB[city]
-  if (cityCoords) {
-    // Add small random offset to spread pins
-    const offset = () => (Math.random() - 0.5) * 0.02
-    return {
-      latitude: cityCoords.lat + offset(),
-      longitude: cityCoords.lng + offset(),
-    }
-  }
-
-  return { latitude: null, longitude: null }
 }
 
 /**
@@ -147,15 +140,7 @@ export function isValidButteCountyCity(city: string): boolean {
 // ===========================================
 
 /**
- * Enrich a property from its APN
- *
- * Pipeline:
- * 1. Normalize APN
- * 2. Look up address from county records
- * 3. Validate city
- * 4. Get census tract
- * 5. Geocode to lat/lng
- * 6. Return enriched data with status
+ * Enrich a property from its APN using Butte County GIS API
  */
 export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
   const missingFields: string[] = []
@@ -167,27 +152,36 @@ export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
       ? `${normalizedAPN.slice(0, 3)}-${normalizedAPN.slice(3, 6)}-${normalizedAPN.slice(6, 9)}`
       : apn
 
-  // Step 2: Look up address
-  const { address, city, zipCode } = await lookupAddress(formattedAPN)
+  // Step 2: Query Butte County GIS API for real data
+  const gisData = await queryButteCountyGIS(formattedAPN)
+
+  let address: string | null = null
+  let city: string | null = null
+  let zipCode: string | null = null
+  let latitude: number | null = null
+  let longitude: number | null = null
+
+  if (gisData) {
+    address = gisData.address
+    city = gisData.city
+    zipCode = gisData.zipCode
+    latitude = gisData.latitude
+    longitude = gisData.longitude
+  }
 
   if (!address) missingFields.push("address")
   if (!city) missingFields.push("city")
   if (!zipCode) missingFields.push("zipCode")
+  if (!latitude || !longitude) missingFields.push("coordinates")
 
   // Step 3: Validate city
   if (city && !isValidButteCountyCity(city)) {
-    console.warn(`City "${city}" not in Butte County`)
+    console.warn(`City "${city}" not in Butte County list`)
   }
 
   // Step 4: Get census tract
   const censusTract = city ? await getCensusTract(city) : null
   if (!censusTract) missingFields.push("censusTract")
-
-  // Step 5: Geocode
-  const { latitude, longitude } =
-    address && city ? await geocodeAddress(address, city) : { latitude: null, longitude: null }
-
-  if (!latitude || !longitude) missingFields.push("coordinates")
 
   // Determine status
   let status: EnrichmentResult["status"] = "complete"
@@ -211,7 +205,7 @@ export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
       longitude,
     },
     missingFields,
-    source: "mock_data", // Change to 'assessor_api' in production
+    source: gisData ? "butte_county_gis" : "not_found",
     enrichedAt: new Date().toISOString(),
   }
 }
@@ -224,7 +218,7 @@ export async function enrichProperties(
   apns: string[],
   options: { concurrency?: number; onProgress?: (completed: number, total: number) => void } = {},
 ): Promise<EnrichmentResult[]> {
-  const { concurrency = 5, onProgress } = options
+  const { concurrency = 3, onProgress } = options // Lower concurrency for API rate limiting
   const results: EnrichmentResult[] = []
 
   // Process in batches
@@ -234,6 +228,11 @@ export async function enrichProperties(
     results.push(...batchResults)
 
     onProgress?.(Math.min(i + concurrency, apns.length), apns.length)
+
+    // Small delay between batches to avoid rate limiting
+    if (i + concurrency < apns.length) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
   }
 
   return results
