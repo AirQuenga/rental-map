@@ -1,7 +1,7 @@
 import { FMRCalculator } from "@/components/fmr/fmr-calculator"
 
 export const metadata = {
-  title: "FMR Calculator | Butte County Rental Atlas",
+  title: "FMR Calculator | Butte County Rental Map",
   description: "Calculate Fair Market Rent with utility allowances for Butte County Section 8 housing",
 }
 
