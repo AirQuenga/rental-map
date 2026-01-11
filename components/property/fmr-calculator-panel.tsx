@@ -1,16 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Thermometer, ChefHat, Droplets, Wind, Flame, Download, MapPin, Calculator } from "lucide-react"
+import { Download } from "lucide-react"
 import {
   BUTTE_CITIES,
+  UTILITY_RATES_2026,
+  FMR_2026,
   calculateFMR2026,
   type CityZone,
   type HeatingType,
@@ -25,72 +27,10 @@ interface FMRCalculatorPanelProps {
   bedrooms: number
   city?: string
   currentRent?: number | null
+  propertyType?: string
 }
 
-// Mini SVG map of Butte County
-function MiniButteMap({
-  selectedCity,
-  onCityClick,
-}: {
-  selectedCity: CityZone
-  onCityClick: (city: CityZone) => void
-}) {
-  const cities: Array<{ id: CityZone; name: string; x: number; y: number }> = [
-    { id: "chico", name: "Chico", x: 45, y: 45 },
-    { id: "paradise", name: "Paradise", x: 75, y: 40 },
-    { id: "magalia", name: "Magalia", x: 80, y: 25 },
-    { id: "oroville", name: "Oroville", x: 70, y: 70 },
-    { id: "gridley", name: "Gridley", x: 35, y: 85 },
-    { id: "biggs", name: "Biggs", x: 30, y: 75 },
-    { id: "durham", name: "Durham", x: 40, y: 60 },
-  ]
-
-  return (
-    <svg viewBox="0 0 100 100" className="h-32 w-full rounded-lg bg-slate-100">
-      {/* County outline */}
-      <path d="M10,10 L90,10 L95,50 L85,90 L15,90 L5,50 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1" />
-
-      {/* Highway 99 */}
-      <path d="M35,10 L38,90" stroke="#fbbf24" strokeWidth="2" strokeDasharray="4,2" />
-      <text x="32" y="50" fontSize="4" fill="#92400e">
-        99
-      </text>
-
-      {/* Highway 70 */}
-      <path d="M50,45 L90,75" stroke="#fbbf24" strokeWidth="2" strokeDasharray="4,2" />
-      <text x="70" y="58" fontSize="4" fill="#92400e">
-        70
-      </text>
-
-      {/* Cities */}
-      {cities.map((city) => (
-        <g key={city.id} onClick={() => onCityClick(city.id)} className="cursor-pointer">
-          <circle
-            cx={city.x}
-            cy={city.y}
-            r={selectedCity === city.id ? 5 : 3}
-            fill={selectedCity === city.id ? "#16a34a" : "#64748b"}
-            stroke={selectedCity === city.id ? "#15803d" : "#475569"}
-            strokeWidth="1"
-            className="transition-all hover:r-4"
-          />
-          <text
-            x={city.x}
-            y={city.y - 6}
-            fontSize="4"
-            textAnchor="middle"
-            fill={selectedCity === city.id ? "#15803d" : "#475569"}
-            fontWeight={selectedCity === city.id ? "bold" : "normal"}
-          >
-            {city.name}
-          </text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-export function FMRCalculatorPanel({ bedrooms, city, currentRent }: FMRCalculatorPanelProps) {
+export function FMRCalculatorPanel({ bedrooms, city, currentRent, propertyType }: FMRCalculatorPanelProps) {
   // Detect city zone from property city
   const detectCity = (cityName?: string): CityZone => {
     if (!cityName) return "chico"
@@ -118,6 +58,7 @@ export function FMRCalculatorPanel({ bedrooms, city, currentRent }: FMRCalculato
     tenantProvidesRefrigerator: false,
   })
 
+  const [otherFees, setOtherFees] = useState(0)
   const [result, setResult] = useState<CalculationResult | null>(null)
 
   // Calculate on config change
@@ -129,16 +70,32 @@ export function FMRCalculatorPanel({ bedrooms, city, currentRent }: FMRCalculato
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Get utility cost for display
+  const getUtilityCost = (type: string, value: string): number => {
+    const br = config.bedrooms
+    if (type === "heating") return UTILITY_RATES_2026.heating[value as HeatingType]?.[br] ?? 0
+    if (type === "cooking") return UTILITY_RATES_2026.cooking[value as CookingType]?.[br] ?? 0
+    if (type === "waterHeater") return UTILITY_RATES_2026.waterHeater[value as WaterHeaterType]?.[br] ?? 0
+    if (type === "airConditioning") return UTILITY_RATES_2026.airConditioning[value as ACType]?.[br] ?? 0
+    if (type === "water") return config.waterIncluded ? 0 : (UTILITY_RATES_2026.water[config.city]?.[br] ?? 0)
+    if (type === "sewer") return config.sewerIncluded ? 0 : (UTILITY_RATES_2026.sewer[config.city]?.[br] ?? 0)
+    return 0
+  }
+
   // Check if any gas utilities are selected
   const hasGas =
     config.heating === "natural-gas" || config.cooking === "natural-gas" || config.waterHeater === "natural-gas"
 
-  // Check if any electric utilities are selected (most properties have electric)
+  // Check if any electric utilities are selected
   const hasElectric =
     config.heating === "electric" ||
     config.cooking === "electric" ||
     config.waterHeater === "electric" ||
     config.airConditioning === "refrigerated"
+
+  // Customer charges
+  const gasCustomerCharge = hasGas ? 4 : 0
+  const electricCustomerCharge = hasElectric ? 12 : 0
 
   const handleDownload = () => {
     if (!result) return
@@ -179,278 +136,281 @@ ${currentRent ? `\nCURRENT RENT: $${currentRent}\nDIFFERENCE: $${result.netRent 
 
   if (!result) return null
 
+  const totalWithFees = result.totalUtilityAllowance + otherFees + gasCustomerCharge + electricCustomerCharge
+
   return (
     <div className="space-y-4">
-      {/* Mini Map */}
-      <div>
-        <Label className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
-          <MapPin className="h-3 w-3" />
-          Click map to change locality
-        </Label>
-        <MiniButteMap selectedCity={config.city} onCityClick={(city) => updateConfig("city", city)} />
-      </div>
-
-      {/* Locality & Bedrooms */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label className="text-xs">Locality</Label>
-          <Select value={config.city} onValueChange={(v) => updateConfig("city", v as CityZone)}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BUTTE_CITIES.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs">Bedrooms</Label>
-          <Select
-            value={config.bedrooms.toString()}
-            onValueChange={(v) => updateConfig("bedrooms", Number.parseInt(v))}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0">Studio</SelectItem>
-              <SelectItem value="1">1 BR</SelectItem>
-              <SelectItem value="2">2 BR</SelectItem>
-              <SelectItem value="3">3 BR</SelectItem>
-              <SelectItem value="4">4 BR</SelectItem>
-              <SelectItem value="5">5+ BR</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 p-4 border border-emerald-200">
+        <h3 className="text-sm font-bold text-emerald-800 mb-1">Fair Market Rent (FMR) - HUD 2026</h3>
+        <p className="text-xs text-emerald-700">Butte County Housing Authority Utility Allowance Schedule</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {Object.entries(FMR_2026).map(([br, amount]) => (
+            <Badge
+              key={br}
+              variant={config.bedrooms === Number(br) ? "default" : "outline"}
+              className={config.bedrooms === Number(br) ? "bg-emerald-600" : ""}
+            >
+              {br === "0" ? "Studio" : `${br}BR`}: ${amount.toLocaleString()}
+            </Badge>
+          ))}
         </div>
       </div>
 
       <Separator />
 
-      {/* Utilities */}
       <div className="space-y-3">
-        <Label className="flex items-center gap-1 text-xs font-semibold">
-          <Flame className="h-3 w-3 text-orange-500" />
-          Utility Types
-        </Label>
-
-        {/* Heating */}
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-xs">
-            <Thermometer className="h-3 w-3 text-red-500" />
-            Heating
-          </span>
-          <Select value={config.heating} onValueChange={(v) => updateConfig("heating", v as HeatingType)}>
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="natural-gas">Natural Gas</SelectItem>
-              <SelectItem value="electric">Electric</SelectItem>
-              <SelectItem value="heat-pump">Heat Pump</SelectItem>
-              <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-              <SelectItem value="none">None</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Cooking */}
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-xs">
-            <ChefHat className="h-3 w-3 text-blue-500" />
-            Cooking
-          </span>
-          <Select value={config.cooking} onValueChange={(v) => updateConfig("cooking", v as CookingType)}>
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="natural-gas">Natural Gas</SelectItem>
-              <SelectItem value="electric">Electric</SelectItem>
-              <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-              <SelectItem value="none">None</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Water Heater */}
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-xs">
-            <Droplets className="h-3 w-3 text-cyan-500" />
-            Water Heater
-          </span>
-          <Select value={config.waterHeater} onValueChange={(v) => updateConfig("waterHeater", v as WaterHeaterType)}>
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="natural-gas">Natural Gas</SelectItem>
-              <SelectItem value="electric">Electric</SelectItem>
-              <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-              <SelectItem value="none">None</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Air Conditioning */}
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-xs">
-            <Wind className="h-3 w-3 text-sky-500" />
-            Air Conditioning
-          </span>
-          <Select value={config.airConditioning} onValueChange={(v) => updateConfig("airConditioning", v as ACType)}>
-            <SelectTrigger className="h-7 w-28 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="refrigerated">Refrigerated</SelectItem>
-              <SelectItem value="evaporative">Evaporative</SelectItem>
-              <SelectItem value="none">None</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Included Utilities */}
-      <div className="space-y-2">
-        <Label className="text-xs font-semibold">Landlord Pays (Included)</Label>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="flex items-center gap-1">
-            <Switch
-              id="water"
-              checked={config.waterIncluded}
-              onCheckedChange={(v) => updateConfig("waterIncluded", v)}
-              className="scale-75"
-            />
-            <Label htmlFor="water" className="text-xs">
-              Water
-            </Label>
-          </div>
-          <div className="flex items-center gap-1">
-            <Switch
-              id="sewer"
-              checked={config.sewerIncluded}
-              onCheckedChange={(v) => updateConfig("sewerIncluded", v)}
-              className="scale-75"
-            />
-            <Label htmlFor="sewer" className="text-xs">
-              Sewer
-            </Label>
-          </div>
-          <div className="flex items-center gap-1">
-            <Switch
-              id="trash"
-              checked={config.trashIncluded}
-              onCheckedChange={(v) => updateConfig("trashIncluded", v)}
-              className="scale-75"
-            />
-            <Label htmlFor="trash" className="text-xs">
-              Trash
-            </Label>
+        <h4 className="text-sm font-semibold text-gray-800">Unit Details</h4>
+        <div className="rounded-md border p-3 space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <Label className="text-[10px] text-gray-500 uppercase">City</Label>
+              <Select value={config.city} onValueChange={(v) => updateConfig("city", v as CityZone)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BUTTE_CITIES.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[10px] text-gray-500 uppercase">Unit Type</Label>
+              <div className="h-8 flex items-center text-xs font-medium capitalize">{propertyType || "Apartment"}</div>
+            </div>
+            <div>
+              <Label className="text-[10px] text-gray-500 uppercase">Bedrooms</Label>
+              <Select
+                value={config.bedrooms.toString()}
+                onValueChange={(v) => updateConfig("bedrooms", Number.parseInt(v))}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Studio</SelectItem>
+                  <SelectItem value="1">1 BR</SelectItem>
+                  <SelectItem value="2">2 BR</SelectItem>
+                  <SelectItem value="3">3 BR</SelectItem>
+                  <SelectItem value="4">4 BR</SelectItem>
+                  <SelectItem value="5">5+ BR</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tenant-Owned Appliances */}
-      <div className="space-y-2">
-        <Label className="text-xs font-semibold">Tenant Provides</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex items-center gap-1">
-            <Switch
-              id="range"
-              checked={config.tenantProvidesRange}
-              onCheckedChange={(v) => updateConfig("tenantProvidesRange", v)}
-              className="scale-75"
-            />
-            <Label htmlFor="range" className="text-xs">
-              Range (+$8)
-            </Label>
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold text-gray-800">Utility Types</h4>
+        <div className="rounded-md border divide-y">
+          {/* Heating */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Heating</span>
+            <Select value={config.heating} onValueChange={(v) => updateConfig("heating", v as HeatingType)}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="natural-gas">Natural Gas</SelectItem>
+                <SelectItem value="electric">Electric</SelectItem>
+                <SelectItem value="heat-pump">Heat Pump</SelectItem>
+                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
+                <SelectItem value="none">None / Paid by Landlord</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-right font-medium">${getUtilityCost("heating", config.heating)}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Switch
-              id="fridge"
-              checked={config.tenantProvidesRefrigerator}
-              onCheckedChange={(v) => updateConfig("tenantProvidesRefrigerator", v)}
-              className="scale-75"
+
+          {/* Cooking */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Cooking</span>
+            <Select value={config.cooking} onValueChange={(v) => updateConfig("cooking", v as CookingType)}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="natural-gas">Natural Gas</SelectItem>
+                <SelectItem value="electric">Electric</SelectItem>
+                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
+                <SelectItem value="none">None / Paid by Landlord</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-right font-medium">${getUtilityCost("cooking", config.cooking)}</span>
+          </div>
+
+          {/* Other Electric */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Other Electric</span>
+            <span className="text-gray-400 text-[10px]">Lights, appliances</span>
+            <span className="text-right font-medium">${electricCustomerCharge}</span>
+          </div>
+
+          {/* Air Conditioning */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Air Conditioning</span>
+            <Select value={config.airConditioning} onValueChange={(v) => updateConfig("airConditioning", v as ACType)}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="refrigerated">Refrigerated</SelectItem>
+                <SelectItem value="evaporative">Evaporative</SelectItem>
+                <SelectItem value="none">None / Paid by Landlord</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-right font-medium">${getUtilityCost("airConditioning", config.airConditioning)}</span>
+          </div>
+
+          {/* Water Heater */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Water Heater</span>
+            <Select value={config.waterHeater} onValueChange={(v) => updateConfig("waterHeater", v as WaterHeaterType)}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="natural-gas">Natural Gas</SelectItem>
+                <SelectItem value="electric">Electric</SelectItem>
+                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
+                <SelectItem value="none">None / Paid by Landlord</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-right font-medium">${getUtilityCost("waterHeater", config.waterHeater)}</span>
+          </div>
+
+          {/* Water */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Water</span>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={config.waterIncluded}
+                onCheckedChange={(v) => updateConfig("waterIncluded", v)}
+                className="scale-75"
+              />
+              <span className="text-[10px] text-gray-500">{config.waterIncluded ? "Included" : "Tenant Pays"}</span>
+            </div>
+            <span className="text-right font-medium">${getUtilityCost("water", "")}</span>
+          </div>
+
+          {/* Sewer */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Sewer</span>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={config.sewerIncluded}
+                onCheckedChange={(v) => updateConfig("sewerIncluded", v)}
+                className="scale-75"
+              />
+              <span className="text-[10px] text-gray-500">{config.sewerIncluded ? "Included" : "Tenant Pays"}</span>
+            </div>
+            <span className="text-right font-medium">${getUtilityCost("sewer", "")}</span>
+          </div>
+
+          {/* Range/Microwave */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Range/Microwave</span>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={config.tenantProvidesRange}
+                onCheckedChange={(v) => updateConfig("tenantProvidesRange", v)}
+                className="scale-75"
+              />
+              <span className="text-[10px] text-gray-500">
+                {config.tenantProvidesRange ? "Tenant Provides" : "Included"}
+              </span>
+            </div>
+            <span className="text-right font-medium">${config.tenantProvidesRange ? 8 : 0}</span>
+          </div>
+
+          {/* Refrigerator */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Refrigerator</span>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={config.tenantProvidesRefrigerator}
+                onCheckedChange={(v) => updateConfig("tenantProvidesRefrigerator", v)}
+                className="scale-75"
+              />
+              <span className="text-[10px] text-gray-500">
+                {config.tenantProvidesRefrigerator ? "Tenant Provides" : "Included"}
+              </span>
+            </div>
+            <span className="text-right font-medium">${config.tenantProvidesRefrigerator ? 12 : 0}</span>
+          </div>
+
+          {/* Other Fees */}
+          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
+            <span className="text-gray-600">Other Fees</span>
+            <Input
+              type="number"
+              value={otherFees}
+              onChange={(e) => setOtherFees(Number(e.target.value) || 0)}
+              className="h-7 text-xs"
+              placeholder="0"
             />
-            <Label htmlFor="fridge" className="text-xs">
-              Refrigerator (+$12)
-            </Label>
+            <span className="text-right font-medium">${otherFees}</span>
           </div>
         </div>
       </div>
 
       {/* Customer Charges Notice */}
       {(hasGas || hasElectric) && (
-        <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
-          <strong>Note:</strong> Add customer charges:
+        <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
+          <strong>Customer Charges Included:</strong>
           {hasGas && <span className="ml-1">Gas $4</span>}
           {hasGas && hasElectric && <span>,</span>}
           {hasElectric && <span className="ml-1">Electric $12</span>}
         </div>
       )}
 
-      <Separator />
-
-      {/* Results */}
-      <Card className="border-green-200 bg-green-50 p-3">
-        <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-green-800">
-          <Calculator className="h-3 w-3" />
-          2026 FMR CALCULATION
-        </div>
-
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span className="text-slate-600">Base FMR ({config.bedrooms} BR)</span>
-            <span className="font-semibold">${result.baseFMR.toLocaleString()}</span>
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold text-gray-800">FMR Calculation</h4>
+        <div className="rounded-md border bg-gradient-to-b from-green-50 to-emerald-50 p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <span className="text-gray-600">
+              Base FMR ({config.bedrooms === 0 ? "Studio" : `${config.bedrooms} BR`})
+            </span>
+            <span className="text-right font-semibold">${result.baseFMR.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between text-red-600">
+          <div className="grid grid-cols-2 gap-2 text-xs text-red-600">
             <span>Utility Allowance</span>
-            <span>-${result.totalUtilityAllowance}</span>
+            <span className="text-right font-semibold">-${totalWithFees}</span>
           </div>
-          <Separator className="my-1" />
-          <div className="flex justify-between text-sm font-bold text-green-700">
+          <Separator />
+          <div className="grid grid-cols-2 gap-2 text-sm font-bold text-green-700">
             <span>Net Rent Limit</span>
-            <span>${result.netRent.toLocaleString()}</span>
+            <span className="text-right">${(result.baseFMR - totalWithFees).toLocaleString()}</span>
           </div>
 
           {currentRent && (
             <>
-              <Separator className="my-1" />
-              <div className="flex justify-between">
-                <span className="text-slate-600">Current Rent</span>
-                <span className="font-semibold">${currentRent.toLocaleString()}</span>
+              <Separator />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <span className="text-gray-600">Current Rent</span>
+                <span className="text-right font-semibold">${currentRent.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Difference</span>
-                <Badge className={currentRent <= result.netRent ? "bg-green-500 text-white" : "bg-red-500 text-white"}>
-                  {currentRent <= result.netRent
-                    ? `$${(result.netRent - currentRent).toLocaleString()} under`
-                    : `$${(currentRent - result.netRent).toLocaleString()} over`}
-                </Badge>
+              <div className="grid grid-cols-2 gap-2 text-xs items-center">
+                <span className="text-gray-600">Difference</span>
+                <div className="text-right">
+                  <Badge
+                    className={
+                      currentRent <= result.baseFMR - totalWithFees
+                        ? "bg-green-500 text-white"
+                        : "bg-red-500 text-white"
+                    }
+                  >
+                    {currentRent <= result.baseFMR - totalWithFees
+                      ? `$${(result.baseFMR - totalWithFees - currentRent).toLocaleString()} under`
+                      : `$${(currentRent - (result.baseFMR - totalWithFees)).toLocaleString()} over`}
+                  </Badge>
+                </div>
               </div>
             </>
           )}
-        </div>
-      </Card>
-
-      {/* Breakdown */}
-      <div>
-        <Label className="mb-2 block text-xs font-semibold">Utility Breakdown</Label>
-        <div className="grid grid-cols-2 gap-1 text-xs">
-          {Object.entries(result.breakdown)
-            .filter(([, v]) => v > 0)
-            .map(([key, value]) => (
-              <div key={key} className="flex justify-between rounded bg-slate-100 px-2 py-1">
-                <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, " $1")}</span>
-                <span className="font-medium">${value}</span>
-              </div>
-            ))}
         </div>
       </div>
 

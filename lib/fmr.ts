@@ -226,7 +226,6 @@ export function calculateUtilityAllowance(
   config?: UtilityConfiguration | null,
 ): { total: number; breakdown: FMRCalculation["utilityBreakdown"] } {
   if (!config) {
-    console.warn("[FMR] Utility config is undefined, returning zero allowance")
     return { total: 0, breakdown: { ...EMPTY_BREAKDOWN } }
   }
 

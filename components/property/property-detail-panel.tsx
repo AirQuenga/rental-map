@@ -210,14 +210,14 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
   return (
     <div className="flex h-full w-[420px] flex-col border-l border-border bg-card">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border p-4">
+      <div className="flex-shrink-0 flex items-center justify-between border-b border-border p-4">
         <h2 className="font-semibold text-card-foreground">Property Details</h2>
         <Button variant="ghost" size="icon" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-auto">
         <div className="p-4">
           {/* Status & Price */}
           <div className="mb-4 flex items-center justify-between">
@@ -364,20 +364,47 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
               {/* Management Info */}
               <div>
                 <h4 className="mb-3 text-sm font-semibold text-card-foreground">Management</h4>
-                <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <div className="text-sm font-medium capitalize">
-                      {property.management_type === "professional"
-                        ? property.management_company || "Professional Management"
-                        : "Private Landlord"}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {property.management_type === "professional"
-                        ? "Professionally Managed"
-                        : "Owner-Managed Property"}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <div className="text-sm font-medium capitalize">
+                        {property.management_type === "professional"
+                          ? property.management_company || "Professional Management"
+                          : "Private Landlord"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {property.management_type === "professional"
+                          ? "Professionally Managed"
+                          : "Owner-Managed Property"}
+                      </div>
                     </div>
                   </div>
+                  {/* Phone Number */}
+                  {property.phone_number && (
+                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <a
+                          href={`tel:${property.phone_number}`}
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          {property.phone_number}
+                        </a>
+                        <div className="text-xs text-muted-foreground">Phone Number</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Office Hours */}
+                  {property.office_hours && (
+                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <div className="text-sm font-medium">{property.office_hours}</div>
+                        <div className="text-xs text-muted-foreground">Office Hours</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -504,11 +531,22 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
                 </>
               )}
 
-              {/* APN Info */}
+              {/* Legal Info */}
               <Separator />
-              <div className="rounded-lg bg-muted/50 p-3">
-                <div className="text-xs text-muted-foreground">Assessor Parcel Number (APN)</div>
-                <div className="font-mono text-sm font-medium text-card-foreground">{property.apn}</div>
+              <div>
+                <h4 className="mb-3 text-sm font-semibold text-card-foreground">Legal</h4>
+                <div className="space-y-2">
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <div className="text-xs text-muted-foreground">Assessor Parcel Number (APN)</div>
+                    <div className="font-mono text-sm font-medium text-card-foreground">{property.apn || "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <div className="text-xs text-muted-foreground">Census Tract</div>
+                    <div className="font-mono text-sm font-medium text-card-foreground">
+                      {property.census_tract || "—"}
+                    </div>
+                  </div>
+                </div>
               </div>
             </TabsContent>
 
@@ -517,6 +555,7 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
                 bedrooms={property.bedrooms || 2}
                 city={property.city}
                 currentRent={property.current_rent}
+                propertyType={property.property_type}
               />
             </TabsContent>
 

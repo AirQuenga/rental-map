@@ -17,6 +17,7 @@ interface RentalAtlasProps {
 export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
   const [properties] = useState<Property[]>(initialProperties)
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
+  const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false)
   const [filters, setFilters] = useState<PropertyFilters>({})
   const [viewMode, setViewMode] = useState<"map" | "list">("map")
   const [showFilters, setShowFilters] = useState(true)
@@ -54,8 +55,20 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
     })
   }, [properties, filters])
 
-  const handleWatch = (property: Property) => {
+  const handlePropertySelect = (property: Property | null) => {
     setSelectedProperty(property)
+    if (property) {
+      setIsDetailPanelOpen(true)
+    }
+  }
+
+  const handleCloseDetailPanel = () => {
+    setIsDetailPanelOpen(false)
+    setSelectedProperty(null)
+  }
+
+  const handleWatch = (property: Property) => {
+    handlePropertySelect(property)
   }
 
   const handleExport = () => {
@@ -171,7 +184,7 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
               <ButteCountyMap
                 properties={filteredProperties}
                 selectedProperty={selectedProperty}
-                onPropertySelect={setSelectedProperty}
+                onPropertySelect={handlePropertySelect}
                 filters={mapFilters}
               />
             </div>
@@ -180,19 +193,19 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
               <PropertyList
                 properties={filteredProperties}
                 selectedProperty={selectedProperty}
-                onPropertySelect={setSelectedProperty}
+                onPropertySelect={handlePropertySelect}
                 onWatch={handleWatch}
               />
             </div>
           )}
 
           {/* Property Detail Panel */}
-          {selectedProperty && (
+          {isDetailPanelOpen && selectedProperty && (
             <ErrorBoundary
               fallback={<PropertyDetailFallback />}
               onError={(error) => console.error("[RentalAtlas] PropertyDetailPanel error:", error)}
             >
-              <PropertyDetailPanel property={selectedProperty} onClose={() => setSelectedProperty(null)} />
+              <PropertyDetailPanel property={selectedProperty} onClose={handleCloseDetailPanel} />
             </ErrorBoundary>
           )}
         </div>

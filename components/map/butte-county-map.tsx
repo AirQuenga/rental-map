@@ -1,11 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import type { Property } from "@/types/property"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut, RotateCcw, Layers } from "lucide-react"
+import { Plus, Minus, Home, Layers } from "lucide-react"
 
 interface ButteCountyMapProps {
   properties: Property[]
@@ -20,13 +19,16 @@ interface ButteCountyMapProps {
   }
 }
 
-// Butte County bounds (approximate)
+// Butte County bounds
 const BOUNDS = {
   minLat: 39.3,
   maxLat: 40.05,
   minLng: -122.05,
   maxLng: -121.15,
 }
+
+const DEFAULT_CENTER = { lat: 39.7285, lng: -121.8375 }
+const DEFAULT_ZOOM = 11
 
 // City centers for reference labels
 const CITIES = [
@@ -39,15 +41,21 @@ const CITIES = [
   { name: "Magalia", lat: 39.8118, lng: -121.5783 },
 ]
 
+const GIS_BASEMAP_URL = "https://gisportal.buttecounty.net/arcgis/rest/services/BaseMap/BaseMap/MapServer/tile"
+// Fallback to Esri World Street Map if GIS fails
+const ESRI_BASEMAP_URL = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile"
+
 export function ButteCountyMap({ properties, selectedProperty, onPropertySelect, filters }: ButteCountyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM)
+  const [center, setCenter] = useState(DEFAULT_CENTER)
   const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0, lat: 0, lng: 0 })
   const [hoveredProperty, setHoveredProperty] = useState<Property | null>(null)
   const [showLabels, setShowLabels] = useState(true)
+  const [useGIS, setUseGIS] = useState(true)
+  const [tileErrors, setTileErrors] = useState<Set<string>>(new Set())
 
   // Update dimensions on resize
   useEffect(() => {
@@ -64,14 +72,88 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
     return () => window.removeEventListener("resize", updateDimensions)
   }, [])
 
-  // Convert lat/lng to SVG coordinates
-  const latLngToXY = useCallback(
+  // Convert lat/lng to pixel coordinates
+  const latLngToPixel = useCallback(
     (lat: number, lng: number) => {
-      const x = ((lng - BOUNDS.minLng) / (BOUNDS.maxLng - BOUNDS.minLng)) * dimensions.width
-      const y = ((BOUNDS.maxLat - lat) / (BOUNDS.maxLat - BOUNDS.minLat)) * dimensions.height
-      return { x, y }
+      const scale = Math.pow(2, zoom) * 256
+      const worldX = ((lng + 180) / 360) * scale
+      const worldY =
+        ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * scale
+
+      const centerX = ((center.lng + 180) / 360) * scale
+      const centerY =
+        ((1 - Math.log(Math.tan((center.lat * Math.PI) / 180) + 1 / Math.cos((center.lat * Math.PI) / 180)) / Math.PI) /
+          2) *
+        scale
+
+      return {
+        x: worldX - centerX + dimensions.width / 2,
+        y: worldY - centerY + dimensions.height / 2,
+      }
     },
-    [dimensions],
+    [zoom, center, dimensions],
+  )
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((z) => {
+      const newZoom = Math.min(18, z + 1)
+      return newZoom
+    })
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((z) => {
+      const newZoom = Math.max(8, z - 1)
+      return newZoom
+    })
+  }, [])
+
+  // Get tile coordinates for current view
+  const getTiles = useMemo(() => {
+    const tiles: { x: number; y: number; z: number }[] = []
+    const tileSize = 256
+    const scale = Math.pow(2, zoom)
+
+    // Calculate tile range
+    const centerTileX = Math.floor(((center.lng + 180) / 360) * scale)
+    const centerTileY = Math.floor(
+      ((1 - Math.log(Math.tan((center.lat * Math.PI) / 180) + 1 / Math.cos((center.lat * Math.PI) / 180)) / Math.PI) /
+        2) *
+        scale,
+    )
+
+    const tilesX = Math.ceil(dimensions.width / tileSize) + 2
+    const tilesY = Math.ceil(dimensions.height / tileSize) + 2
+
+    for (let dx = -Math.floor(tilesX / 2); dx <= Math.ceil(tilesX / 2); dx++) {
+      for (let dy = -Math.floor(tilesY / 2); dy <= Math.ceil(tilesY / 2); dy++) {
+        const x = centerTileX + dx
+        const y = centerTileY + dy
+        if (x >= 0 && x < scale && y >= 0 && y < scale) {
+          tiles.push({ x, y, z: zoom })
+        }
+      }
+    }
+
+    return tiles
+  }, [zoom, center, dimensions])
+
+  // Calculate tile position
+  const getTilePosition = useCallback(
+    (tileX: number, tileY: number) => {
+      const scale = Math.pow(2, zoom) * 256
+      const centerX = ((center.lng + 180) / 360) * scale
+      const centerY =
+        ((1 - Math.log(Math.tan((center.lat * Math.PI) / 180) + 1 / Math.cos((center.lat * Math.PI) / 180)) / Math.PI) /
+          2) *
+        scale
+
+      return {
+        x: tileX * 256 - centerX + dimensions.width / 2,
+        y: tileY * 256 - centerY + dimensions.height / 2,
+      }
+    },
+    [zoom, center, dimensions],
   )
 
   // Filter properties based on map filters
@@ -89,26 +171,33 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
 
   // Get color for property pin
   const getPropertyColor = (property: Property) => {
-    if (property.is_section_8) return "#8B5CF6" // Purple
-    if (property.is_post_fire_rebuild) return "#F97316" // Orange
-    if (property.is_student_housing) return "#3B82F6" // Blue
-    if (property.is_available) return "#22C55E" // Green
-    return "#6B7280" // Gray
+    if (property.is_section_8) return "#8B5CF6"
+    if (property.is_post_fire_rebuild) return "#F97316"
+    if (property.is_student_housing) return "#3B82F6"
+    if (property.is_available) return "#22C55E"
+    return "#6B7280"
   }
 
-  // Mouse handlers for panning
+  // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
       setIsDragging(true)
-      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+      setDragStart({ x: e.clientX, y: e.clientY, lat: center.lat, lng: center.lng })
     }
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging) {
-      setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
+      const dx = e.clientX - dragStart.x
+      const dy = e.clientY - dragStart.y
+
+      const scale = Math.pow(2, zoom) * 256
+      const dLng = (-dx / scale) * 360
+      const dLat = (dy / scale) * 180
+
+      setCenter({
+        lat: Math.max(-85, Math.min(85, dragStart.lat + dLat)),
+        lng: dragStart.lng + dLng,
       })
     }
   }
@@ -117,16 +206,22 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
     setIsDragging(false)
   }
 
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
-    const delta = e.deltaY > 0 ? -0.1 : 0.1
-    setZoom((z) => Math.max(0.5, Math.min(5, z + delta)))
-  }
+    const delta = e.deltaY > 0 ? -1 : 1
+    setZoom((z) => Math.max(8, Math.min(18, z + delta)))
+  }, [])
 
-  const resetView = () => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }
+  const resetView = useCallback(() => {
+    setZoom(DEFAULT_ZOOM)
+    setCenter(DEFAULT_CENTER)
+    setTileErrors(new Set())
+  }, [])
+
+  // Handle tile error - fallback to Esri
+  const handleTileError = useCallback((key: string) => {
+    setTileErrors((prev) => new Set(prev).add(key))
+  }, [])
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-slate-100" ref={containerRef}>
@@ -135,27 +230,36 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
         <Button
           variant="secondary"
           size="icon"
-          onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
-          className="h-8 w-8 bg-white shadow-md"
+          onClick={handleZoomIn}
+          className="h-8 w-8 bg-white shadow-md hover:bg-gray-100"
+          title="Zoom In"
         >
-          <ZoomIn className="h-4 w-4" />
+          <Plus className="h-4 w-4 text-gray-700" />
         </Button>
         <Button
           variant="secondary"
           size="icon"
-          onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
-          className="h-8 w-8 bg-white shadow-md"
+          onClick={handleZoomOut}
+          className="h-8 w-8 bg-white shadow-md hover:bg-gray-100"
+          title="Zoom Out"
         >
-          <ZoomOut className="h-4 w-4" />
+          <Minus className="h-4 w-4 text-gray-700" />
         </Button>
-        <Button variant="secondary" size="icon" onClick={resetView} className="h-8 w-8 bg-white shadow-md">
-          <RotateCcw className="h-4 w-4" />
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={resetView}
+          className="h-8 w-8 bg-white shadow-md hover:bg-gray-100"
+          title="Reset View to Chico"
+        >
+          <Home className="h-4 w-4 text-gray-700" />
         </Button>
         <Button
           variant={showLabels ? "default" : "secondary"}
           size="icon"
           onClick={() => setShowLabels(!showLabels)}
           className="h-8 w-8 shadow-md"
+          title="Toggle City Labels"
         >
           <Layers className="h-4 w-4" />
         </Button>
@@ -163,34 +267,39 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 z-10 rounded-lg bg-white p-3 shadow-md">
-        <div className="mb-2 text-xs font-semibold text-gray-700">Legend</div>
+        <div className="mb-2 text-xs font-semibold text-gray-800">Legend</div>
         <div className="flex flex-col gap-1.5 text-xs">
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-green-500" />
-            <span>Available</span>
+            <span className="text-gray-700">Available</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-gray-500" />
-            <span>Occupied</span>
+            <span className="text-gray-700">Occupied</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-orange-500" />
-            <span>Post-Fire Rebuild</span>
+            <span className="text-gray-700">Post-Fire Rebuild</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-blue-500" />
-            <span>Student Housing</span>
+            <span className="text-gray-700">Student Housing</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 rounded-full bg-purple-500" />
-            <span>Section 8</span>
+            <span className="text-gray-700">Section 8</span>
           </div>
         </div>
       </div>
 
-      {/* Property Count */}
-      <div className="absolute right-4 top-4 z-10 rounded-lg bg-white px-3 py-2 shadow-md">
-        <span className="text-sm font-medium">{filteredProperties.length} properties</span>
+      {/* Property Count & Zoom Level */}
+      <div className="absolute right-4 top-4 z-10 flex flex-col gap-2">
+        <div className="rounded-lg bg-white px-3 py-2 shadow-md">
+          <span className="text-sm font-medium text-gray-800">{filteredProperties.length} properties</span>
+        </div>
+        <div className="rounded-lg bg-white px-3 py-1 shadow-md">
+          <span className="text-xs text-gray-600">Zoom: {zoom}</span>
+        </div>
       </div>
 
       {/* Hover Tooltip */}
@@ -198,8 +307,14 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
         <div
           className="pointer-events-none absolute z-20 max-w-xs rounded-lg bg-white p-3 shadow-lg"
           style={{
-            left: latLngToXY(hoveredProperty.latitude!, hoveredProperty.longitude!).x * zoom + pan.x + 20,
-            top: latLngToXY(hoveredProperty.latitude!, hoveredProperty.longitude!).y * zoom + pan.y - 10,
+            left: Math.min(
+              latLngToPixel(hoveredProperty.latitude!, hoveredProperty.longitude!).x + 20,
+              dimensions.width - 220,
+            ),
+            top: Math.min(
+              latLngToPixel(hoveredProperty.latitude!, hoveredProperty.longitude!).y - 10,
+              dimensions.height - 120,
+            ),
           }}
         >
           <div className="font-semibold text-gray-900">{hoveredProperty.property_name || hoveredProperty.address}</div>
@@ -215,127 +330,122 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
               {hoveredProperty.bedrooms} bed, {hoveredProperty.bathrooms} bath
             </div>
           )}
+          <div className="mt-1 text-xs text-blue-500">Click to view details</div>
         </div>
       )}
 
-      {/* SVG Map */}
-      <svg
-        width={dimensions.width}
-        height={dimensions.height}
+      {/* Map Container */}
+      <div
+        className="relative h-full w-full cursor-grab active:cursor-grabbing"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
-        className="cursor-grab active:cursor-grabbing"
         style={{ touchAction: "none" }}
       >
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* Background county shape (simplified polygon) */}
-          <path
-            d={`M ${dimensions.width * 0.1},${dimensions.height * 0.1} 
-                L ${dimensions.width * 0.9},${dimensions.height * 0.05} 
-                L ${dimensions.width * 0.95},${dimensions.height * 0.5} 
-                L ${dimensions.width * 0.85},${dimensions.height * 0.95} 
-                L ${dimensions.width * 0.15},${dimensions.height * 0.9} 
-                L ${dimensions.width * 0.05},${dimensions.height * 0.4} Z`}
-            fill="#E5E7EB"
-            stroke="#9CA3AF"
-            strokeWidth={1 / zoom}
-          />
+        {getTiles.map((tile) => {
+          const pos = getTilePosition(tile.x, tile.y)
+          const key = `${tile.z}-${tile.x}-${tile.y}`
+          const hasTileError = tileErrors.has(key)
+          // Use Esri as fallback if GIS tile fails
+          const tileUrl = hasTileError
+            ? `${ESRI_BASEMAP_URL}/${tile.z}/${tile.y}/${tile.x}`
+            : `${GIS_BASEMAP_URL}/${tile.z}/${tile.y}/${tile.x}`
 
-          {/* Grid lines */}
-          {Array.from({ length: 10 }).map((_, i) => (
-            <g key={`grid-${i}`}>
-              <line
-                x1={0}
-                y1={(i / 10) * dimensions.height}
-                x2={dimensions.width}
-                y2={(i / 10) * dimensions.height}
-                stroke="#D1D5DB"
-                strokeWidth={0.5 / zoom}
-                strokeDasharray={`${4 / zoom} ${4 / zoom}`}
-              />
-              <line
-                x1={(i / 10) * dimensions.width}
-                y1={0}
-                x2={(i / 10) * dimensions.width}
-                y2={dimensions.height}
-                stroke="#D1D5DB"
-                strokeWidth={0.5 / zoom}
-                strokeDasharray={`${4 / zoom} ${4 / zoom}`}
-              />
-            </g>
-          ))}
+          return (
+            <img
+              key={key}
+              src={tileUrl || "/placeholder.svg"}
+              alt=""
+              className="absolute"
+              style={{
+                left: pos.x,
+                top: pos.y,
+                width: 256,
+                height: 256,
+                pointerEvents: "none",
+              }}
+              draggable={false}
+              onError={() => {
+                if (!hasTileError) {
+                  handleTileError(key)
+                }
+              }}
+            />
+          )
+        })}
 
-          {/* City labels */}
-          {showLabels &&
-            CITIES.map((city) => {
-              const { x, y } = latLngToXY(city.lat, city.lng)
-              return (
-                <g key={city.name}>
-                  <circle cx={x} cy={y} r={8 / zoom} fill="rgba(0,0,0,0.1)" stroke="#374151" strokeWidth={1 / zoom} />
-                  <text
-                    x={x}
-                    y={y - 12 / zoom}
-                    textAnchor="middle"
-                    fontSize={12 / zoom}
-                    fontWeight="600"
-                    fill="#374151"
-                    className="pointer-events-none select-none"
-                  >
-                    {city.name}
-                  </text>
-                </g>
-              )
-            })}
-
-          {/* Property pins */}
-          {filteredProperties.map((property) => {
-            const { x, y } = latLngToXY(property.latitude!, property.longitude!)
-            const isSelected = selectedProperty?.id === property.id
-            const isHovered = hoveredProperty?.id === property.id
-            const color = getPropertyColor(property)
-            const size = isSelected || isHovered ? 10 : 6
-
+        {/* City labels */}
+        {showLabels &&
+          CITIES.map((city) => {
+            const pos = latLngToPixel(city.lat, city.lng)
+            if (pos.x < -50 || pos.x > dimensions.width + 50 || pos.y < -50 || pos.y > dimensions.height + 50) {
+              return null
+            }
             return (
-              <g key={property.id}>
-                {/* Pulse effect for selected */}
-                {isSelected && (
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={16 / zoom}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={2 / zoom}
-                    opacity={0.4}
-                    className="animate-ping"
-                  />
-                )}
-                {/* Pin shadow */}
-                <circle cx={x + 1 / zoom} cy={y + 1 / zoom} r={size / zoom} fill="rgba(0,0,0,0.2)" />
-                {/* Pin */}
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={size / zoom}
-                  fill={color}
-                  stroke={isSelected ? "#fff" : "rgba(255,255,255,0.8)"}
-                  strokeWidth={(isSelected ? 3 : 1.5) / zoom}
-                  className="cursor-pointer transition-all duration-150"
-                  onMouseEnter={() => setHoveredProperty(property)}
-                  onMouseLeave={() => setHoveredProperty(null)}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onPropertySelect(property)
-                  }}
-                />
-              </g>
+              <div
+                key={city.name}
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-full"
+                style={{ left: pos.x, top: pos.y - 12 }}
+              >
+                <div className="rounded bg-white/90 px-2 py-0.5 text-xs font-semibold text-gray-800 shadow-sm">
+                  {city.name}
+                </div>
+              </div>
             )
           })}
-        </g>
-      </svg>
+
+        {/* Property pins */}
+        {filteredProperties.map((property) => {
+          const pos = latLngToPixel(property.latitude!, property.longitude!)
+          if (pos.x < -20 || pos.x > dimensions.width + 20 || pos.y < -20 || pos.y > dimensions.height + 20) {
+            return null
+          }
+          const isSelected = selectedProperty?.id === property.id
+          const isHovered = hoveredProperty?.id === property.id
+          const color = getPropertyColor(property)
+          const size = isSelected || isHovered ? 16 : 12
+
+          return (
+            <div
+              key={property.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-125"
+              style={{ left: pos.x, top: pos.y, zIndex: isSelected || isHovered ? 100 : 10 }}
+              onMouseEnter={() => setHoveredProperty(property)}
+              onMouseLeave={() => setHoveredProperty(null)}
+              onClick={(e) => {
+                e.stopPropagation()
+                onPropertySelect(property)
+              }}
+            >
+              {/* Pulse effect for selected */}
+              {isSelected && (
+                <div
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full opacity-40"
+                  style={{ width: size * 2, height: size * 2, backgroundColor: color }}
+                />
+              )}
+              {/* Pin */}
+              <div
+                className="rounded-full shadow-lg"
+                style={{
+                  width: size,
+                  height: size,
+                  backgroundColor: color,
+                  border: isSelected ? "3px solid white" : "2px solid rgba(255,255,255,0.8)",
+                  boxShadow: isSelected ? `0 0 0 2px ${color}` : undefined,
+                }}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Attribution */}
+      <div className="absolute bottom-4 right-4 z-10 rounded bg-white/80 px-2 py-1 text-[10px] text-gray-600">
+        Map data © Butte County GIS, Esri
+      </div>
     </div>
   )
 }

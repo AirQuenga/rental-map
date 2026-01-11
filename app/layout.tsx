@@ -8,10 +8,10 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Butte County Rental Atlas",
+  title: "Butte County Rental Map",
   description:
-    "Complete rental market intelligence for Butte County, CA. View all 32,000+ properties with real-time availability tracking.",
-  generator: "v0.app",
+    "A rental market map for Butte County, CA. View properties with real-time availability tracking.",
+  generator: "Marcel L. Quenga",
   icons: {
     icon: [
       {
