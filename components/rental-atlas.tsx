@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { PropertyMap } from "@/components/map/property-map"
+import { LeafletMap } from "@/components/map/leaflet-map"
 import { FilterSidebar } from "@/components/filters/filter-sidebar"
 import { PropertyList } from "@/components/property/property-list"
 import { PropertyDetailPanel } from "@/components/property/property-detail-panel"
+import { ErrorBoundary, PropertyDetailFallback } from "@/components/error-boundary"
 import type { Property, PropertyFilters } from "@/types/property"
 import { Button } from "@/components/ui/button"
-import { Map, List, Menu } from "lucide-react"
+import { Map, List, Menu, Download } from "lucide-react"
 
 interface RentalAtlasProps {
   initialProperties: Property[]
@@ -19,6 +20,14 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
   const [filters, setFilters] = useState<PropertyFilters>({})
   const [viewMode, setViewMode] = useState<"map" | "list">("map")
   const [showFilters, setShowFilters] = useState(true)
+
+  const [mapFilters, setMapFilters] = useState({
+    showAvailable: true,
+    showOccupied: true,
+    showPostFire: true,
+    showStudentHousing: true,
+    showSection8: true,
+  })
 
   // Get unique cities and management companies for filters
   const cities = useMemo(() => [...new Set(properties.map((p) => p.city))].sort(), [properties])
@@ -40,12 +49,57 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
       if (filters.isAvailable && !property.is_available) return false
       if (filters.isPostFireRebuild && !property.is_post_fire_rebuild) return false
       if (filters.isStudentHousing && !property.is_student_housing) return false
+      if (filters.isSection8 && !property.is_section_8) return false
       return true
     })
   }, [properties, filters])
 
   const handleWatch = (property: Property) => {
     setSelectedProperty(property)
+  }
+
+  const handleExport = () => {
+    const headers = [
+      "APN",
+      "Address",
+      "City",
+      "Zip",
+      "Type",
+      "Beds",
+      "Baths",
+      "SqFt",
+      "Rent",
+      "Available",
+      "Management",
+      "Post-Fire",
+      "Student",
+      "Section 8",
+    ]
+    const rows = filteredProperties.map((p) => [
+      p.apn,
+      p.address,
+      p.city,
+      p.zip_code || "",
+      p.property_type,
+      p.bedrooms || "",
+      p.bathrooms || "",
+      p.square_feet || "",
+      p.current_rent || "",
+      p.is_available ? "Yes" : "No",
+      p.management_company || p.management_type || "",
+      p.is_post_fire_rebuild ? "Yes" : "No",
+      p.is_student_housing ? "Yes" : "No",
+      p.is_section_8 ? "Yes" : "No",
+    ])
+
+    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `butte-county-rentals-${new Date().toISOString().split("T")[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -67,6 +121,11 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} className="h-8 bg-transparent">
+            <Download className="mr-1 h-4 w-4" />
+            Export CSV
+          </Button>
+
           {/* View Mode Toggle */}
           <div className="flex rounded-lg border border-border bg-muted p-1">
             <Button
@@ -100,6 +159,8 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
             onFiltersChange={setFilters}
             cities={cities}
             managementCompanies={managementCompanies}
+            mapFilters={mapFilters}
+            onMapFiltersChange={setMapFilters}
           />
         )}
 
@@ -107,10 +168,11 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
         <div className="flex flex-1 overflow-hidden">
           {viewMode === "map" ? (
             <div className="flex-1">
-              <PropertyMap
+              <LeafletMap
                 properties={filteredProperties}
                 selectedProperty={selectedProperty}
                 onPropertySelect={setSelectedProperty}
+                filters={mapFilters}
               />
             </div>
           ) : (
@@ -126,7 +188,12 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
 
           {/* Property Detail Panel */}
           {selectedProperty && (
-            <PropertyDetailPanel property={selectedProperty} onClose={() => setSelectedProperty(null)} />
+            <ErrorBoundary
+              fallback={<PropertyDetailFallback />}
+              onError={(error) => console.error("[RentalAtlas] PropertyDetailPanel error:", error)}
+            >
+              <PropertyDetailPanel property={selectedProperty} onClose={() => setSelectedProperty(null)} />
+            </ErrorBoundary>
           )}
         </div>
       </div>
