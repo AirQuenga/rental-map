@@ -65,7 +65,7 @@ export default function ImportPage() {
           failedCount += result.failed
           skippedCount += result.skipped
           if (result.errors.length > 0) {
-            errors.push(...result.errors.slice(0, 5)) // Limit errors per batch
+            errors.push(...result.errors)
           }
         } catch (error) {
           addLog(`Batch ${i + 1} failed: ${error}`)
@@ -166,7 +166,6 @@ export default function ImportPage() {
         </CardContent>
       </Card>
 
-      {/* Results */}
       {results && (
         <Card className="mb-6">
           <CardHeader>
@@ -176,43 +175,49 @@ export default function ImportPage() {
               ) : (
                 <AlertCircle className="h-5 w-5 text-yellow-500" />
               )}
-              Import Results
+              Import Results Summary
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
+          <CardContent className="space-y-4">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
                 <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {results.success.toLocaleString()}
                 </div>
-                <div className="text-sm text-muted-foreground">Inserted</div>
+                <div className="text-sm font-medium text-green-700 dark:text-green-300">Total Successes</div>
               </div>
-              <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+              <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
                 <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                   {results.skipped.toLocaleString()}
                 </div>
-                <div className="text-sm text-muted-foreground">Skipped (existing)</div>
+                <div className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Skipped (Existing)</div>
               </div>
-              <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-lg">
+              <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
                 <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {results.failed.toLocaleString()}
                 </div>
-                <div className="text-sm text-muted-foreground">Failed</div>
+                <div className="text-sm font-medium text-red-700 dark:text-red-300">Total Failures</div>
               </div>
             </div>
 
             {results.errors.length > 0 && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Errors</AlertTitle>
+                <AlertTitle>Failed APNs ({results.errors.length})</AlertTitle>
                 <AlertDescription>
-                  <ul className="list-disc list-inside mt-2">
-                    {results.errors.slice(0, 10).map((error, i) => (
-                      <li key={i} className="text-sm">
-                        {error}
-                      </li>
-                    ))}
-                  </ul>
+                  <ScrollArea className="max-h-64 mt-2">
+                    <ul className="list-none space-y-1">
+                      {results.errors.map((error, i) => (
+                        <li
+                          key={i}
+                          className="text-sm font-mono py-1 border-b border-red-200 dark:border-red-800 last:border-0"
+                        >
+                          {error}
+                        </li>
+                      ))}
+                    </ul>
+                  </ScrollArea>
                 </AlertDescription>
               </Alert>
             )}
