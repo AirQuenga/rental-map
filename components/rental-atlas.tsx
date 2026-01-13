@@ -8,7 +8,10 @@ import { PropertyDetailPanel } from "@/components/property/property-detail-panel
 import { ErrorBoundary, PropertyDetailFallback } from "@/components/error-boundary"
 import type { Property, PropertyFilters } from "@/types/property"
 import { Button } from "@/components/ui/button"
-import { Map, List, Menu, Download } from "lucide-react"
+import { Map, List, Menu, Download, ExternalLink, Settings } from "lucide-react"
+import Link from "next/link"
+
+const EXCEL_FILE_URL = "/comps-sheet.xlsx"
 
 interface RentalAtlasProps {
   initialProperties: Property[]
@@ -115,6 +118,10 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
     URL.revokeObjectURL(url)
   }
 
+  const handleOpenExcelSheet = () => {
+    window.open(EXCEL_FILE_URL, "_blank", "noopener,noreferrer")
+  }
+
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Header */}
@@ -128,12 +135,26 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
               <Map className="h-4 w-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-card-foreground">Butte County Rental Map - Made by Marcel L. Quenga</h1>
+              <h1 className="text-lg font-bold text-card-foreground">
+                Butte County Rental Map - Made by Marcel L. Quenga
+              </h1>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="h-8 bg-transparent">
+            <Link href="/admin/import">
+              <Settings className="mr-1 h-4 w-4" />
+              Admin Import
+            </Link>
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={handleOpenExcelSheet} className="h-8 bg-transparent">
+            <ExternalLink className="mr-1 h-4 w-4" />
+            Excel Sheet
+          </Button>
+
           <Button variant="outline" size="sm" onClick={handleExport} className="h-8 bg-transparent">
             <Download className="mr-1 h-4 w-4" />
             Export CSV

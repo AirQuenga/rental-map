@@ -2,14 +2,13 @@
  * Property Enrichment Pipeline
  *
  * This module handles automatic enrichment of property data from APNs:
- * - Address lookup via Butte County GIS API (primary)
- * - US Census Bureau Geocoder API (fallback)
+ * - Address lookup via Butte County GIS API
  * - City identification from APN prefix patterns
  * - Census tract identification
- * - Geocoding (lat/lng) from parcel centroids or city centers
+ * - Geocoding (lat/lng) from parcel centroids
  */
 
-import { BUTTE_COUNTY_CITIES, CENSUS_TRACTS } from "@/config/enums"
+import { CENSUS_TRACTS } from "@/config/enums"
 
 // ===========================================
 // ENRICHMENT RESULT INTERFACE
@@ -33,12 +32,11 @@ export interface EnrichmentResult {
 }
 
 // ===========================================
-// APN PREFIX TO CITY MAPPING
+// APN PREFIX TO CITY MAPPING (COMPREHENSIVE)
+// Based on Butte County Assessor APN ranges
 // ===========================================
-// Butte County APN prefixes map to specific areas
-// Format: XXX-XXX-XXX where first 3 digits often indicate area
 const APN_CITY_MAP: Record<string, { city: string; lat: number; lng: number; zip: string }> = {
-  // Chico area (001-049)
+  // Chico area (001-020, 040-049)
   "001": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95928" },
   "002": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95928" },
   "003": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95928" },
@@ -59,6 +57,38 @@ const APN_CITY_MAP: Record<string, { city: string; lat: number; lng: number; zip
   "018": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
   "019": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
   "020": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "040": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "041": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "042": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "043": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "044": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "045": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "046": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "047": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "048": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  "049": { city: "Chico", lat: 39.7285, lng: -121.8375, zip: "95926" },
+  // Gridley area (021-029)
+  "021": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "022": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "023": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "024": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "025": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "026": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "027": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "028": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  "029": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
+  // Biggs area (030-034)
+  "030": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
+  "031": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
+  "032": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
+  "033": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
+  "034": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
+  // Durham area (035-039)
+  "035": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
+  "036": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
+  "037": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
+  "038": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
+  "039": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
   // Oroville area (050-089)
   "050": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95965" },
   "051": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95965" },
@@ -71,6 +101,35 @@ const APN_CITY_MAP: Record<string, { city: string; lat: number; lng: number; zip
   "058": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
   "059": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
   "060": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "061": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "062": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "063": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "064": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "065": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "066": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "067": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "068": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "069": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "070": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "071": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "072": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "073": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "074": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "075": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "076": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "077": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "078": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "079": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "080": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "081": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "082": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "083": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "084": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "085": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "086": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "087": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "088": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
+  "089": { city: "Oroville", lat: 39.5138, lng: -121.5564, zip: "95966" },
   // Paradise area (090-109)
   "090": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
   "091": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
@@ -78,27 +137,33 @@ const APN_CITY_MAP: Record<string, { city: string; lat: number; lng: number; zip
   "093": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
   "094": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
   "095": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "096": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "097": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "098": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "099": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "100": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "101": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "102": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "103": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "104": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "105": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "106": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "107": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "108": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
+  "109": { city: "Paradise", lat: 39.7596, lng: -121.6219, zip: "95969" },
   // Magalia area (110-119)
   "110": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
   "111": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
   "112": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
-  // Gridley area (021-029)
-  "021": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
-  "022": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
-  "023": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
-  "024": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
-  "025": { city: "Gridley", lat: 39.3638, lng: -121.6936, zip: "95948" },
-  // Biggs area (030-034)
-  "030": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
-  "031": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
-  "032": { city: "Biggs", lat: 39.4127, lng: -121.7128, zip: "95917" },
-  // Durham area (035-039)
-  "035": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
-  "036": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
-  "037": { city: "Durham", lat: 39.646, lng: -121.7997, zip: "95938" },
+  "113": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "114": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "115": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "116": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "117": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "118": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
+  "119": { city: "Magalia", lat: 39.8121, lng: -121.5783, zip: "95954" },
 }
 
-// City center fallbacks with slight randomization for visual spread
 const CITY_CENTERS: Record<string, { lat: number; lng: number; zip: string }> = {
   Chico: { lat: 39.7285, lng: -121.8375, zip: "95928" },
   Oroville: { lat: 39.5138, lng: -121.5564, zip: "95965" },
@@ -110,114 +175,185 @@ const CITY_CENTERS: Record<string, { lat: number; lng: number; zip: string }> = 
 }
 
 // ===========================================
-// GET CITY FROM APN PREFIX
+// HELPERS
 // ===========================================
+
 function getCityFromAPN(apn: string): { city: string; lat: number; lng: number; zip: string } | null {
   const normalized = apn.replace(/[^0-9]/g, "")
   const prefix = normalized.slice(0, 3)
   return APN_CITY_MAP[prefix] || null
 }
 
-// ===========================================
-// ADD SMALL RANDOM OFFSET FOR VISUAL SPREAD
-// ===========================================
 function addSmallOffset(lat: number, lng: number, apn: string): { lat: number; lng: number } {
-  // Use APN as seed for consistent but spread-out coordinates
-  const hash = apn.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  const offsetLat = ((hash % 100) - 50) * 0.0005 // ~50m spread
-  const offsetLng = (((hash * 7) % 100) - 50) * 0.0005
-  return {
-    lat: lat + offsetLat,
-    lng: lng + offsetLng,
-  }
+  const normalized = apn.replace(/[^0-9]/g, "")
+  const hash = normalized.split("").reduce((acc, char, i) => acc + char.charCodeAt(0) * (i + 1), 0)
+  // Spread properties within ~0.5 mile radius of city center
+  const offsetLat = ((hash % 200) - 100) * 0.001
+  const offsetLng = (((hash * 7) % 200) - 100) * 0.001
+  return { lat: lat + offsetLat, lng: lng + offsetLng }
+}
+
+function isValidJsonResponse(text: string): boolean {
+  if (!text || typeof text !== "string") return false
+  const trimmed = text.trim()
+  return trimmed.startsWith("{") || trimmed.startsWith("[")
 }
 
 // ===========================================
-// US CENSUS BUREAU GEOCODER (FREE, RELIABLE)
+// BUTTE COUNTY GIS API QUERY
 // ===========================================
-async function geocodeWithCensus(
-  address: string,
-  city: string,
-  state = "CA",
-): Promise<{ lat: number; lng: number; tract: string | null } | null> {
-  try {
-    const fullAddress = `${address}, ${city}, ${state}`
-    const url = new URL("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress")
-    url.searchParams.set("address", fullAddress)
-    url.searchParams.set("benchmark", "Public_AR_Current")
-    url.searchParams.set("vintage", "Current_Current")
-    url.searchParams.set("format", "json")
 
-    const response = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(10000),
-    })
+interface GISParcelResult {
+  address: string | null
+  city: string | null
+  zip: string | null
+  lat: number | null
+  lng: number | null
+}
+
+/**
+ * Query Butte County GIS for parcel data by APN
+ * Tries multiple service endpoints and APN formats
+ */
+async function queryButteCountyGIS(apn: string): Promise<GISParcelResult | null> {
+  const normalized = apn.replace(/[^0-9]/g, "")
+
+  // Try different APN formats
+  const apnFormats = [
+    normalized, // 001012008000
+    `${normalized.slice(0, 3)}-${normalized.slice(3, 6)}-${normalized.slice(6, 9)}`, // 001-012-008
+    `${normalized.slice(0, 3)}-${normalized.slice(3, 6)}-${normalized.slice(6)}`, // 001-012-008000
+  ]
+
+  // GIS Services to try (in order of preference)
+  const services = [
+    "https://gisportal.buttecounty.net/arcgis/rest/services/Parcel_Lookup_Data/FeatureServer/0",
+    "https://gisportal.buttecounty.net/arcgis/rest/services/Base_Layers/FeatureServer/0",
+    "https://gisportal.buttecounty.net/arcgis/rest/services/lafco/lafco/FeatureServer/2",
+  ]
+
+  // APN field names to try
+  const apnFields = ["APN", "Apn", "apn", "PARCEL_NUMBER", "ParcelNumber", "PARCELID"]
+
+  for (const service of services) {
+    for (const apnFormat of apnFormats) {
+      for (const field of apnFields) {
+        try {
+          const url = new URL(`${service}/query`)
+          url.searchParams.set("where", `${field}='${apnFormat}'`)
+          url.searchParams.set("outFields", "*")
+          url.searchParams.set("returnGeometry", "true")
+          url.searchParams.set("outSR", "4326")
+          url.searchParams.set("f", "json")
+
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+          const response = await fetch(url.toString(), {
+            signal: controller.signal,
+            headers: { Accept: "application/json" },
+          })
+          clearTimeout(timeoutId)
+
+          if (!response.ok) continue
+
+          const text = await response.text()
+          if (!isValidJsonResponse(text)) continue
+
+          const data = JSON.parse(text)
+
+          if (data.error) continue
+          if (!data.features || data.features.length === 0) continue
+
+          const feature = data.features[0]
+          const attrs = feature.attributes || {}
+          const geom = feature.geometry
+
+          // Extract address from various possible field names
+          const address =
+            attrs.SitusAddress ||
+            attrs.SITUS_ADDR ||
+            attrs.Address ||
+            attrs.SITUS ||
+            attrs.FullAddress ||
+            attrs.FULL_ADDR ||
+            null
+
+          const city = attrs.SitusCity || attrs.SITUS_CITY || attrs.City || attrs.CITY || null
+
+          const zip = attrs.SitusZip || attrs.SITUS_ZIP || attrs.Zip || attrs.ZIP || attrs.ZIPCODE || null
+
+          // Get centroid coordinates
+          let lat: number | null = null
+          let lng: number | null = null
+
+          if (geom) {
+            if (geom.x && geom.y) {
+              lng = geom.x
+              lat = geom.y
+            } else if (geom.rings && geom.rings.length > 0) {
+              // Calculate centroid of polygon
+              const ring = geom.rings[0]
+              const sumX = ring.reduce((sum: number, coord: number[]) => sum + coord[0], 0)
+              const sumY = ring.reduce((sum: number, coord: number[]) => sum + coord[1], 0)
+              lng = sumX / ring.length
+              lat = sumY / ring.length
+            }
+          }
+
+          if (address || (lat && lng)) {
+            return { address, city, zip, lat, lng }
+          }
+        } catch {
+          // Continue to next combination
+          continue
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * REVERSE GEOCODING (MAPBOX)
+ * Fallback: Converts coordinates into a human-readable street address
+ */
+async function getAddressFromCoords(lat: number, lng: number): Promise<string | null> {
+  try {
+    const token = process.env.MAPBOX_TOKEN
+    if (!token) return null
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address&limit=1`
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
 
     if (!response.ok) return null
 
-    const data = await response.json()
+    const contentType = response.headers.get("content-type") || ""
+    if (!contentType.includes("application/json")) return null
 
-    if (data.result?.addressMatches?.length > 0) {
-      const match = data.result.addressMatches[0]
-      const coords = match.coordinates
-      const geographies = match.geographies
+    const text = await response.text()
+    if (!isValidJsonResponse(text)) return null
 
-      let tract: string | null = null
-      if (geographies?.["Census Tracts"]?.length > 0) {
-        tract = geographies["Census Tracts"][0].TRACT
-      }
-
-      return {
-        lat: coords.y,
-        lng: coords.x,
-        tract,
-      }
+    const data = JSON.parse(text)
+    if (data.features && data.features.length > 0) {
+      return data.features[0].place_name
     }
-  } catch (e) {
-    console.warn(`Census geocoding failed for ${address}, ${city}:`, e)
+  } catch {
+    // Silently fail
   }
   return null
 }
 
 // ===========================================
-// BUTTE COUNTY GIS API (PRIMARY - MAY BE RESTRICTED)
-// ===========================================
-async function queryButteCountyGIS(apn: string): Promise<{
-  address: string | null
-  city: string | null
-  zipCode: string | null
-  latitude: number | null
-  longitude: number | null
-} | null> {
-  // The Butte County GIS portal appears to be restricted
-  // Return null to trigger fallback mechanisms
-  // This function is kept for future use if the API becomes available
-  return null
-}
-
-/**
- * Get census tract for a location
- */
-export async function getCensusTract(city: string): Promise<string | null> {
-  const tract = CENSUS_TRACTS.find((t) => t.city === city)
-  return tract?.tract ?? null
-}
-
-/**
- * Validate city is in Butte County
- */
-export function isValidButteCountyCity(city: string): boolean {
-  return BUTTE_COUNTY_CITIES.includes(city as (typeof BUTTE_COUNTY_CITIES)[number])
-}
-
-// ===========================================
-// MAIN ENRICHMENT PIPELINE
+// MAIN PIPELINE
 // ===========================================
 
-/**
- * Enrich a property from its APN
- * Uses APN prefix mapping and city center coordinates as primary method
- * since Butte County GIS API is not publicly accessible
- */
 export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
   const missingFields: string[] = []
 
@@ -228,39 +364,84 @@ export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
       ? `${normalizedAPN.slice(0, 3)}-${normalizedAPN.slice(3, 6)}-${normalizedAPN.slice(6, 9)}${normalizedAPN.length > 9 ? "-" + normalizedAPN.slice(9) : ""}`
       : apn
 
-  // Step 2: Get city from APN prefix
+  // Step 2: Try Butte County GIS first for actual parcel data
+  let address: string | null = null
+  let city: string | null = null
+  let zipCode: string | null = null
+  let latitude: number | null = null
+  let longitude: number | null = null
+  let source = "fallback"
+
+  const gisResult = await queryButteCountyGIS(apn)
+
+  if (gisResult) {
+    source = "butte_county_gis"
+    if (gisResult.address) address = gisResult.address
+    if (gisResult.city) city = gisResult.city
+    if (gisResult.zip) zipCode = gisResult.zip
+    if (gisResult.lat && gisResult.lng) {
+      latitude = gisResult.lat
+      longitude = gisResult.lng
+    }
+  }
+
+  // Step 3: Fallback to APN prefix mapping for city/coordinates if GIS failed
   const apnData = getCityFromAPN(apn)
 
-  const address = `Address Unknown - ${formattedAPN}`
-  const city: string = apnData?.city || "Chico"
-  const zipCode: string = apnData?.zip || "95928"
-  let latitude: number
-  let longitude: number
-  let censusTract: string | null = null
-  let source = "apn_prefix_mapping"
+  if (!city && apnData) {
+    city = apnData.city
+    source = source === "butte_county_gis" ? source : "apn_prefix_mapping"
+  }
 
-  // Step 3: Get coordinates with small offset for visual spread
-  if (apnData) {
+  if (!zipCode && apnData) {
+    zipCode = apnData.zip
+  }
+
+  if ((!latitude || !longitude) && apnData) {
     const coords = addSmallOffset(apnData.lat, apnData.lng, apn)
     latitude = coords.lat
     longitude = coords.lng
-  } else {
-    // Fallback to Chico as default for unknown prefixes
+    source = source === "butte_county_gis" ? source : "apn_prefix_mapping"
+  }
+
+  // Step 4: Final fallback to Chico if nothing worked
+  if (!city) {
+    city = "Chico"
     source = "default_chico"
-    const coords = addSmallOffset(CITY_CENTERS.Chico.lat, CITY_CENTERS.Chico.lng, apn)
+  }
+
+  if (!zipCode) {
+    zipCode = CITY_CENTERS[city]?.zip || "95928"
+  }
+
+  if (!latitude || !longitude) {
+    const cityData = CITY_CENTERS[city] || CITY_CENTERS.Chico
+    const coords = addSmallOffset(cityData.lat, cityData.lng, apn)
     latitude = coords.lat
     longitude = coords.lng
   }
 
-  // Step 4: Get census tract for the city
-  censusTract = await getCensusTract(city)
+  // Step 5: Try Mapbox reverse geocoding if we still don't have an address
+  if (!address && latitude && longitude) {
+    const mapboxAddress = await getAddressFromCoords(latitude, longitude)
+    if (mapboxAddress) {
+      address = mapboxAddress
+      source += "_plus_mapbox"
+    }
+  }
 
-  // Track missing fields (address is now always populated with default)
-  if (address.startsWith("Address Unknown")) missingFields.push("address")
+  // Step 6: Final address fallback with city info
+  if (!address) {
+    address = `${city}, CA ${zipCode} (APN: ${formattedAPN})`
+    missingFields.push("address")
+  }
+
+  // Step 7: Get census tract
+  const censusTract = CENSUS_TRACTS?.find((t) => t.city === city)?.tract || null
   if (!censusTract) missingFields.push("censusTract")
 
-  // Determine status - we always have coordinates now
-  const status: EnrichmentResult["status"] = missingFields.includes("address") ? "partial" : "complete"
+  const status: EnrichmentResult["status"] =
+    missingFields.length === 0 ? "complete" : missingFields.length === 1 ? "partial" : "missing_data"
 
   return {
     apn: formattedAPN,
@@ -281,25 +462,21 @@ export async function enrichProperty(apn: string): Promise<EnrichmentResult> {
   }
 }
 
-// ===========================================
-// BATCH ENRICHMENT PIPELINE
-// ===========================================
-
 /**
- * Batch enrich multiple properties
+ * Batch enrich multiple properties with a delay to avoid rate limits
  */
 export async function enrichProperties(
   apns: string[],
-  options: { concurrency?: number; onProgress?: (completed: number, total: number) => void } = {},
+  options: { onProgress?: (completed: number, total: number) => void } = {},
 ): Promise<EnrichmentResult[]> {
-  const { concurrency = 10, onProgress } = options
+  const { onProgress } = options
   const results: EnrichmentResult[] = []
 
-  for (let i = 0; i < apns.length; i += concurrency) {
-    const batch = apns.slice(i, i + concurrency)
-    const batchResults = await Promise.all(batch.map(enrichProperty))
-    results.push(...batchResults)
-    onProgress?.(Math.min(i + concurrency, apns.length), apns.length)
+  for (let i = 0; i < apns.length; i++) {
+    const result = await enrichProperty(apns[i])
+    results.push(result)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    onProgress?.(i + 1, apns.length)
   }
 
   return results
