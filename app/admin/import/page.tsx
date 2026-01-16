@@ -28,45 +28,439 @@ import { importAddressesToDatabase } from "@/app/actions/import-addresses"
 import { scrapeRentalListings, importScrapedProperties } from "@/app/actions/scrape-rentals"
 import { ManualEntryForm } from "@/components/admin/manual-entry-form"
 import Link from "next/link"
-import { RENTAL_SOURCES, type RentalSource } from "@/app/actions/scrape-rentals"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { SiteHeader } from "@/components/site-header"
 
-const GOOGLE_SHEETS_URL =
-  "https://docs.google.com/spreadsheets/d/174_jO1aF9RLXJhRXeuqqc0HR4j0j5qLh/edit?usp=sharing&ouid=109559821974235632283&rtpof=true&sd=true"
+const SOURCES = [
+  // Internal Databases (1)
+  {
+    id: "known",
+    name: "Known Butte County Properties",
+    category: "database",
+    status: "active",
+    description: "Local database of verified apartment complexes",
+    estimatedListings: 30,
+  },
+
+  // Local Butte County Sites (8)
+  {
+    id: "chicoForRent",
+    name: "ChicoForRent.com",
+    category: "local",
+    status: "blocked",
+    description: "Chico-specific rental listings",
+    estimatedListings: 150,
+  },
+  {
+    id: "rentInChico",
+    name: "RentInChico.com",
+    category: "local",
+    status: "blocked",
+    description: "Local Chico rental properties",
+    estimatedListings: 120,
+  },
+  {
+    id: "csusChico",
+    name: "CSU Chico Off-Campus Housing",
+    category: "local",
+    status: "blocked",
+    description: "Student housing near campus",
+    estimatedListings: 200,
+  },
+  {
+    id: "chicoNewsReview",
+    name: "Chico News & Review Classifieds",
+    category: "local",
+    status: "blocked",
+    description: "Local classifieds section",
+    estimatedListings: 50,
+  },
+  {
+    id: "butteCountyHousing",
+    name: "Butte County Housing Authority",
+    category: "local",
+    status: "api-only",
+    description: "Affordable housing listings",
+    estimatedListings: 75,
+  },
+  {
+    id: "paradisePost",
+    name: "Paradise Post Classifieds",
+    category: "local",
+    status: "blocked",
+    description: "Paradise area rentals",
+    estimatedListings: 40,
+  },
+  {
+    id: "orovilleMR",
+    name: "Oroville Mercury-Register",
+    category: "local",
+    status: "blocked",
+    description: "Oroville local listings",
+    estimatedListings: 35,
+  },
+  {
+    id: "butteCountyBulletin",
+    name: "Butte County Bulletin Board",
+    category: "local",
+    status: "blocked",
+    description: "Community bulletin rentals",
+    estimatedListings: 25,
+  },
+
+  // National Rental Sites (26)
+  {
+    id: "zillow",
+    name: "Zillow Rentals",
+    category: "national",
+    status: "blocked",
+    description: "Comprehensive rental listings",
+    estimatedListings: 500,
+  },
+  {
+    id: "realtor",
+    name: "Realtor.com Rentals",
+    category: "national",
+    status: "blocked",
+    description: "MLS-powered rentals",
+    estimatedListings: 450,
+  },
+  {
+    id: "apartments",
+    name: "Apartments.com",
+    category: "national",
+    status: "blocked",
+    description: "Apartments & homes",
+    estimatedListings: 400,
+  },
+  {
+    id: "trulia",
+    name: "Trulia Rentals",
+    category: "national",
+    status: "blocked",
+    description: "Houses & apartments",
+    estimatedListings: 450,
+  },
+  {
+    id: "hotpads",
+    name: "HotPads",
+    category: "national",
+    status: "blocked",
+    description: "Map-based rental search",
+    estimatedListings: 350,
+  },
+  {
+    id: "rent",
+    name: "Rent.com",
+    category: "national",
+    status: "blocked",
+    description: "National rental search",
+    estimatedListings: 380,
+  },
+  {
+    id: "rentals",
+    name: "Rentals.com",
+    category: "national",
+    status: "blocked",
+    description: "Houses & apartments",
+    estimatedListings: 320,
+  },
+  {
+    id: "apartmentFinder",
+    name: "Apartment Finder",
+    category: "national",
+    status: "blocked",
+    description: "Apartment search engine",
+    estimatedListings: 340,
+  },
+  {
+    id: "apartmentGuide",
+    name: "Apartment Guide",
+    category: "national",
+    status: "blocked",
+    description: "Apartment listings",
+    estimatedListings: 330,
+  },
+  {
+    id: "apartmentList",
+    name: "Apartment List",
+    category: "national",
+    status: "blocked",
+    description: "Personalized search",
+    estimatedListings: 360,
+  },
+  {
+    id: "zumper",
+    name: "Zumper",
+    category: "national",
+    status: "blocked",
+    description: "Apartment rentals",
+    estimatedListings: 310,
+  },
+  {
+    id: "rentCafe",
+    name: "RENTCafé",
+    category: "national",
+    status: "api-only",
+    description: "Property management listings",
+    estimatedListings: 280,
+  },
+  {
+    id: "forRent",
+    name: "ForRent.com",
+    category: "national",
+    status: "blocked",
+    description: "Apartments & houses",
+    estimatedListings: 290,
+  },
+  {
+    id: "move",
+    name: "Move.com",
+    category: "national",
+    status: "blocked",
+    description: "Rental search platform",
+    estimatedListings: 270,
+  },
+  {
+    id: "padmapper",
+    name: "PadMapper",
+    category: "national",
+    status: "blocked",
+    description: "Map-based search",
+    estimatedListings: 300,
+  },
+  {
+    id: "rentberry",
+    name: "Rentberry",
+    category: "national",
+    status: "blocked",
+    description: "Online rental platform",
+    estimatedListings: 240,
+  },
+  {
+    id: "cozy",
+    name: "Cozy.co",
+    category: "national",
+    status: "api-only",
+    description: "Landlord-tenant platform",
+    estimatedListings: 220,
+  },
+  {
+    id: "avail",
+    name: "Avail",
+    category: "national",
+    status: "api-only",
+    description: "DIY landlord software",
+    estimatedListings: 200,
+  },
+  {
+    id: "rentalHousingDeals",
+    name: "Rental Housing Deals",
+    category: "national",
+    status: "blocked",
+    description: "Rental listings",
+    estimatedListings: 180,
+  },
+  {
+    id: "rentler",
+    name: "Rentler",
+    category: "national",
+    status: "blocked",
+    description: "Western US rentals",
+    estimatedListings: 210,
+  },
+  {
+    id: "doorsteps",
+    name: "Doorsteps",
+    category: "national",
+    status: "blocked",
+    description: "Move.com network",
+    estimatedListings: 190,
+  },
+  {
+    id: "myNewPlace",
+    name: "MyNewPlace",
+    category: "national",
+    status: "blocked",
+    description: "Apartment search",
+    estimatedListings: 170,
+  },
+  {
+    id: "rentPath",
+    name: "RentPath",
+    category: "national",
+    status: "api-only",
+    description: "Multi-site network",
+    estimatedListings: 400,
+  },
+  {
+    id: "realPage",
+    name: "RealPage",
+    category: "national",
+    status: "api-only",
+    description: "Property management",
+    estimatedListings: 350,
+  },
+  {
+    id: "yardi",
+    name: "Yardi RentCafe",
+    category: "national",
+    status: "api-only",
+    description: "Property software",
+    estimatedListings: 320,
+  },
+  {
+    id: "appFolio",
+    name: "AppFolio",
+    category: "national",
+    status: "api-only",
+    description: "Property management",
+    estimatedListings: 280,
+  },
+
+  // Classifieds & Marketplaces (15)
+  {
+    id: "craigslist",
+    name: "Craigslist Chico",
+    category: "classifieds",
+    status: "blocked",
+    description: "Local classifieds",
+    estimatedListings: 300,
+  },
+  {
+    id: "facebook",
+    name: "Facebook Marketplace",
+    category: "classifieds",
+    status: "blocked",
+    description: "Social marketplace",
+    estimatedListings: 450,
+  },
+  {
+    id: "nextdoor",
+    name: "Nextdoor",
+    category: "classifieds",
+    status: "blocked",
+    description: "Neighborhood network",
+    estimatedListings: 120,
+  },
+  {
+    id: "oodle",
+    name: "Oodle",
+    category: "classifieds",
+    status: "blocked",
+    description: "Classified ads aggregator",
+    estimatedListings: 200,
+  },
+  {
+    id: "trovit",
+    name: "Trovit",
+    category: "classifieds",
+    status: "blocked",
+    description: "Search aggregator",
+    estimatedListings: 180,
+  },
+  {
+    id: "nestoria",
+    name: "Nestoria",
+    category: "classifieds",
+    status: "blocked",
+    description: "Property search engine",
+    estimatedListings: 160,
+  },
+  {
+    id: "vast",
+    name: "Vast.com",
+    category: "classifieds",
+    status: "blocked",
+    description: "Classified ads",
+    estimatedListings: 140,
+  },
+  {
+    id: "adsglobe",
+    name: "AdsGlobe",
+    category: "classifieds",
+    status: "blocked",
+    description: "Free classifieds",
+    estimatedListings: 100,
+  },
+  {
+    id: "classifiedAds",
+    name: "Classified Ads",
+    category: "classifieds",
+    status: "blocked",
+    description: "General classifieds",
+    estimatedListings: 130,
+  },
+  {
+    id: "geebo",
+    name: "Geebo",
+    category: "classifieds",
+    status: "blocked",
+    description: "Safe local classifieds",
+    estimatedListings: 90,
+  },
+  {
+    id: "recycler",
+    name: "Recycler",
+    category: "classifieds",
+    status: "blocked",
+    description: "Online classifieds",
+    estimatedListings: 110,
+  },
+  {
+    id: "pennysaver",
+    name: "PennySaver",
+    category: "classifieds",
+    status: "blocked",
+    description: "Local shopping guide",
+    estimatedListings: 80,
+  },
+  {
+    id: "locanto",
+    name: "Locanto",
+    category: "classifieds",
+    status: "blocked",
+    description: "Free classifieds",
+    estimatedListings: 95,
+  },
+  {
+    id: "backpage",
+    name: "Backpage Alternatives",
+    category: "classifieds",
+    status: "blocked",
+    description: "Classified alternatives",
+    estimatedListings: 70,
+  },
+  {
+    id: "offerup",
+    name: "OfferUp",
+    category: "classifieds",
+    status: "blocked",
+    description: "Buy and sell locally",
+    estimatedListings: 150,
+  },
+] as const
+
+type SourceStatus = "active" | "blocked" | "api-only"
+type SourceCategory = "database" | "local" | "national" | "classifieds"
 
 export default function ImportPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentBatch, setCurrentBatch] = useState(0)
   const [totalBatches, setTotalBatches] = useState(0)
-  const [apnStats, setApnStats] = useState<{
-    total: number
-    unique: number
-    duplicates: number
-  } | null>(null)
-  const [addressStats, setAddressStats] = useState<{
-    total: number
-    unique: number
-    duplicates: number
-  } | null>(null)
-  const [results, setResults] = useState<{
-    success: number
-    failed: number
-    skipped: number
-    errors: string[]
-  } | null>(null)
+  const [apnStats, setApnStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
+  const [addressStats, setAddressStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
+  const [results, setResults] = useState<{ success: number; failed: number; skipped: number; errors: string[] } | null>(
+    null,
+  )
   const [logs, setLogs] = useState<string[]>([])
 
   const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
-  const [scrapeResults, setScrapeResults] = useState<{
-    properties: any[]
-    errors: string[]
-  } | null>(null)
+  const [scrapeResults, setScrapeResults] = useState<{ properties: any[]; errors: string[] } | null>(null)
   const [isScraping, setIsScraping] = useState(false)
   const [scrapePhase, setScrapePhase] = useState<"idle" | "scraping" | "importing">("idle")
-
   const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
 
   useEffect(() => {
@@ -119,24 +513,17 @@ export default function ImportPage() {
           successCount += result.success
           failedCount += result.failed
           skippedCount += result.skipped
-
           if (result.errors.length > 0) {
             const remainingSlots = 200 - errors.length
-            if (remainingSlots > 0) {
-              errors.push(...result.errors.slice(0, remainingSlots))
-            }
+            if (remainingSlots > 0) errors.push(...result.errors.slice(0, remainingSlots))
           }
-
           addLog(`Batch ${i + 1}: ${result.success} success, ${result.skipped} skipped, ${result.failed} failed`)
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : "Unknown error"
           addLog(`Batch ${i + 1} failed: ${errMsg.slice(0, 100)}`)
           failedCount += batch.length
-          if (errors.length < 200) {
-            errors.push(`Batch ${i + 1}: ${errMsg.slice(0, 80)}`)
-          }
+          if (errors.length < 200) errors.push(`Batch ${i + 1}: ${errMsg.slice(0, 80)}`)
         }
-
         setProgress(((i + 1) / batches) * 100)
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
@@ -166,19 +553,10 @@ export default function ImportPage() {
     try {
       addLog("Starting web scrape...")
       addLog(`Sources: ${scrapeSources.join(", ")}`)
-
       const result = await scrapeRentalListings(scrapeSources)
-
       addLog(`Scrape complete! Found ${result.properties.length} properties`)
-
-      if (result.errors.length > 0) {
-        result.errors.forEach((err) => addLog(`Error: ${err}`))
-      }
-
-      setScrapeResults({
-        properties: result.properties,
-        errors: result.errors,
-      })
+      if (result.errors.length > 0) result.errors.forEach((err) => addLog(`Error: ${err}`))
+      setScrapeResults({ properties: result.properties, errors: result.errors })
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error"
       addLog(`Scrape failed: ${errMsg}`)
@@ -190,14 +568,12 @@ export default function ImportPage() {
 
   const handleImportScraped = async () => {
     if (!scrapeResults?.properties.length) return
-
     setIsProcessing(true)
     setScrapePhase("importing")
     setProgress(0)
 
     try {
       addLog(`Importing ${scrapeResults.properties.length} scraped properties...`)
-
       const batchSize = 10
       const batches = Math.ceil(scrapeResults.properties.length / batchSize)
       setTotalBatches(batches)
@@ -217,18 +593,13 @@ export default function ImportPage() {
           successCount += result.success
           failedCount += result.failed
           skippedCount += result.skipped
-
-          if (result.errors.length > 0) {
-            errors.push(...result.errors.slice(0, 50))
-          }
-
+          if (result.errors.length > 0) errors.push(...result.errors.slice(0, 50))
           addLog(`Batch ${i + 1}: ${result.success} success, ${result.skipped} skipped, ${result.failed} failed`)
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : "Unknown error"
           addLog(`Batch ${i + 1} failed: ${errMsg.slice(0, 100)}`)
           failedCount += batch.length
         }
-
         setProgress(((i + 1) / batches) * 100)
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
@@ -246,15 +617,26 @@ export default function ImportPage() {
     }
   }
 
-  const toggleSource = (source: string) => {
-    setScrapeSources((prev) => (prev.includes(source) ? prev.filter((s) => s !== source) : [...prev, source]))
+  const toggleSource = (id: string) => {
+    setScrapeSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
+  }
+
+  const filteredSources = SOURCES.filter((s) => sourceFilter === "all" || s.status === sourceFilter)
+  const databaseSources = filteredSources.filter((s) => s.category === "database")
+  const localSources = filteredSources.filter((s) => s.category === "local")
+  const nationalSources = filteredSources.filter((s) => s.category === "national")
+  const classifiedSources = filteredSources.filter((s) => s.category === "classifieds")
+
+  const statusColors: Record<SourceStatus, string> = {
+    active: "bg-green-500",
+    blocked: "bg-red-500",
+    "api-only": "bg-yellow-500",
   }
 
   return (
     <div className="min-h-screen bg-white dark:bg-black transition-colors duration-300">
       <SiteHeader />
 
-      {/* Hero Section */}
       <section className="pt-24 pb-12 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Breadcrumb */}
@@ -280,7 +662,7 @@ export default function ImportPage() {
             <h1 className="text-5xl md:text-6xl font-semibold tracking-tight">Property Data Import</h1>
           </div>
 
-          <Tabs defaultValue="manual" className="space-y-6">
+          <Tabs defaultValue="scrape" className="space-y-6">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="manual" className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
@@ -309,392 +691,309 @@ export default function ImportPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Globe className="h-5 w-5" />
-                    Web Scrape Rental Listings (50 Sources)
+                    Web Scrape Rental Listings ({SOURCES.length} Sources)
                   </CardTitle>
                   <CardDescription>Select sources to scrape. Most major sites block automation.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Source Selection */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-base font-semibold">
-                        All Sources ({Object.keys(RENTAL_SOURCES).length})
-                      </Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={sourceFilter === "all" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setSourceFilter("all")}
-                        >
-                          All
-                        </Button>
-                        <Button
-                          variant={sourceFilter === "active" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setSourceFilter("active")}
-                        >
-                          Active Only
-                        </Button>
-                        <Button
-                          variant={sourceFilter === "blocked" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setSourceFilter("blocked")}
-                        >
-                          Blocked
-                        </Button>
-                        <Button
-                          variant={sourceFilter === "api-only" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setSourceFilter("api-only")}
-                        >
-                          API Only
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
+                  {/* Filter Buttons */}
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <Label className="text-base font-semibold">
+                      Showing {filteredSources.length} of {SOURCES.length} Sources
+                    </Label>
+                    <div className="flex gap-2 flex-wrap">
                       <Button
-                        variant="outline"
+                        variant={sourceFilter === "all" ? "default" : "outline"}
                         size="sm"
-                        onClick={() => {
-                          const activeSources = Object.values(RENTAL_SOURCES)
-                            .filter((s) => s.status === "active")
-                            .map((s) => s.id)
-                          setScrapeSources(activeSources)
-                        }}
+                        onClick={() => setSourceFilter("all")}
                       >
-                        Select Active Only
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
-                        Clear All
+                        All ({SOURCES.length})
                       </Button>
                       <Button
-                        variant="outline"
+                        variant={sourceFilter === "active" ? "default" : "outline"}
                         size="sm"
-                        onClick={() => {
-                          const filteredSources = Object.values(RENTAL_SOURCES)
-                            .filter((s) => sourceFilter === "all" || s.status === sourceFilter)
-                            .map((s) => s.id)
-                          setScrapeSources(filteredSources)
-                        }}
+                        onClick={() => setSourceFilter("active")}
                       >
-                        Select Filtered
+                        Active ({SOURCES.filter((s) => s.status === "active").length})
                       </Button>
-                    </div>
-
-                    <ScrollArea className="h-[500px] border rounded-lg p-4">
-                      <div className="space-y-6">
-                        {/* Internal Databases */}
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <Database className="h-4 w-4" />
-                            Internal Databases (
-                            {
-                              Object.values(RENTAL_SOURCES).filter(
-                                (s) =>
-                                  s.category === "database" && (sourceFilter === "all" || s.status === sourceFilter),
-                              ).length
-                            }
-                            )
-                          </h3>
-                          <div className="space-y-2">
-                            {Object.values(RENTAL_SOURCES)
-                              .filter(
-                                (s) =>
-                                  s.category === "database" && (sourceFilter === "all" || s.status === sourceFilter),
-                              )
-                              .map((source) => (
-                                <SourceCard
-                                  key={source.id}
-                                  source={source}
-                                  isSelected={scrapeSources.includes(source.id)}
-                                  onToggle={() => toggleSource(source.id)}
-                                />
-                              ))}
-                          </div>
-                        </div>
-
-                        {/* Local Sites */}
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <MapPin className="h-4 w-4" />
-                            Local Butte County Sites (
-                            {
-                              Object.values(RENTAL_SOURCES).filter(
-                                (s) => s.category === "local" && (sourceFilter === "all" || s.status === sourceFilter),
-                              ).length
-                            }
-                            )
-                          </h3>
-                          <div className="space-y-2">
-                            {Object.values(RENTAL_SOURCES)
-                              .filter(
-                                (s) => s.category === "local" && (sourceFilter === "all" || s.status === sourceFilter),
-                              )
-                              .map((source) => (
-                                <SourceCard
-                                  key={source.id}
-                                  source={source}
-                                  isSelected={scrapeSources.includes(source.id)}
-                                  onToggle={() => toggleSource(source.id)}
-                                />
-                              ))}
-                          </div>
-                        </div>
-
-                        {/* National Sites */}
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <Globe className="h-4 w-4" />
-                            National Rental Sites (
-                            {
-                              Object.values(RENTAL_SOURCES).filter(
-                                (s) =>
-                                  s.category === "national" && (sourceFilter === "all" || s.status === sourceFilter),
-                              ).length
-                            }
-                            )
-                          </h3>
-                          <div className="space-y-2">
-                            {Object.values(RENTAL_SOURCES)
-                              .filter(
-                                (s) =>
-                                  s.category === "national" && (sourceFilter === "all" || s.status === sourceFilter),
-                              )
-                              .map((source) => (
-                                <SourceCard
-                                  key={source.id}
-                                  source={source}
-                                  isSelected={scrapeSources.includes(source.id)}
-                                  onToggle={() => toggleSource(source.id)}
-                                />
-                              ))}
-                          </div>
-                        </div>
-                        {/* Classifieds */}
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2">
-                            <Search className="h-4 w-4" />
-                            Classifieds & Marketplaces (
-                            {
-                              Object.values(RENTAL_SOURCES).filter(
-                                (s) =>
-                                  s.category === "classifieds" && (sourceFilter === "all" || s.status === sourceFilter),
-                              ).length
-                            }
-                            )
-                          </h3>
-                          <div className="space-y-2">
-                            {Object.values(RENTAL_SOURCES)
-                              .filter(
-                                (s) =>
-                                  s.category === "classifieds" && (sourceFilter === "all" || s.status === sourceFilter),
-                              )
-                              .map((source) => (
-                                <SourceCard
-                                  key={source.id}
-                                  source={source}
-                                  isSelected={scrapeSources.includes(source.id)}
-                                  onToggle={() => toggleSource(source.id)}
-                                />
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-                    </ScrollArea>
-
-                    {/* Summary */}
-                    <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <span className="text-sm font-medium">
-                        {scrapeSources.length} source{scrapeSources.length !== 1 ? "s" : ""} selected
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        Est.{" "}
-                        {Object.values(RENTAL_SOURCES)
-                          .filter((s) => scrapeSources.includes(s.id))
-                          .reduce((sum, s) => sum + s.estimatedListings, 0)}{" "}
-                        listings
-                      </span>
+                      <Button
+                        variant={sourceFilter === "blocked" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSourceFilter("blocked")}
+                      >
+                        Blocked ({SOURCES.filter((s) => s.status === "blocked").length})
+                      </Button>
+                      <Button
+                        variant={sourceFilter === "api-only" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSourceFilter("api-only")}
+                      >
+                        API Only ({SOURCES.filter((s) => s.status === "api-only").length})
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Scrape Button */}
-                  <Button
-                    onClick={handleScrape}
-                    disabled={isScraping || isProcessing || scrapeSources.length === 0}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {isScraping ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Scraping {scrapeSources.length} source{scrapeSources.length !== 1 ? "s" : ""}...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="mr-2 h-4 w-4" />
-                        Start Scraping {scrapeSources.length} Source{scrapeSources.length !== 1 ? "s" : ""}
-                      </>
-                    )}
-                  </Button>
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScrapeSources(SOURCES.filter((s) => s.status === "active").map((s) => s.id))}
+                    >
+                      Select Active Only
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
+                      Clear All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScrapeSources(filteredSources.map((s) => s.id))}
+                    >
+                      Select All Filtered
+                    </Button>
+                  </div>
 
-                  {/* Scrape Results */}
-                  {scrapeResults && (
-                    <Card className="bg-muted/50">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                          Scrape Results
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                              {scrapeResults.properties.length}
-                            </div>
-                            <div className="text-sm text-muted-foreground">Properties Found</div>
-                          </div>
-                          <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                            <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
-                              {scrapeResults.errors.length}
-                            </div>
-                            <div className="text-sm text-muted-foreground">Errors</div>
+                  {/* Sources List */}
+                  <ScrollArea className="h-[500px] border rounded-lg p-4">
+                    <div className="space-y-6">
+                      {/* Internal Databases */}
+                      {databaseSources.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+                            <Database className="h-4 w-4" />
+                            Internal Databases ({databaseSources.length})
+                          </h3>
+                          <div className="space-y-2 ml-2">
+                            {databaseSources.map((source) => (
+                              <div
+                                key={source.id}
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <Checkbox
+                                  checked={scrapeSources.includes(source.id)}
+                                  onCheckedChange={() => toggleSource(source.id)}
+                                />
+                                <div
+                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
+                                  title={source.status}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{source.name}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {source.estimatedListings} listings
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{source.description}</p>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
+                      )}
 
-                        {scrapeResults.properties.length > 0 && (
-                          <>
-                            <ScrollArea className="h-48 border rounded-lg p-4">
-                              <div className="space-y-2">
-                                {scrapeResults.properties.slice(0, 20).map((prop, i) => (
-                                  <div key={i} className="text-sm p-2 bg-background rounded border">
-                                    <div className="font-medium">{prop.propertyName || prop.address}</div>
-                                    <div className="text-muted-foreground flex gap-4">
-                                      <span>
-                                        {prop.bedrooms}BR/{prop.bathrooms}BA
-                                      </span>
-                                      {prop.rent && <span className="text-green-600">${prop.rent}/mo</span>}
-                                      <span className="text-xs">{prop.source}</span>
-                                    </div>
+                      {/* Local Sites */}
+                      {localSources.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+                            <MapPin className="h-4 w-4" />
+                            Local Butte County Sites ({localSources.length})
+                          </h3>
+                          <div className="space-y-2 ml-2">
+                            {localSources.map((source) => (
+                              <div
+                                key={source.id}
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <Checkbox
+                                  checked={scrapeSources.includes(source.id)}
+                                  onCheckedChange={() => toggleSource(source.id)}
+                                />
+                                <div
+                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
+                                  title={source.status}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{source.name}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {source.estimatedListings} listings
+                                    </Badge>
                                   </div>
-                                ))}
-                                {scrapeResults.properties.length > 20 && (
-                                  <div className="text-sm text-muted-foreground text-center py-2">
-                                    ...and {scrapeResults.properties.length - 20} more
-                                  </div>
-                                )}
+                                  <p className="text-sm text-muted-foreground">{source.description}</p>
+                                </div>
                               </div>
-                            </ScrollArea>
-
-                            <Button
-                              onClick={handleImportScraped}
-                              disabled={isProcessing}
-                              className="w-full"
-                              variant="default"
-                            >
-                              {isProcessing ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Importing... {currentBatch > 0 && `(${currentBatch}/${totalBatches})`}
-                                </>
-                              ) : (
-                                <>
-                                  <Upload className="mr-2 h-4 w-4" />
-                                  Import {scrapeResults.properties.length} Properties to Database
-                                </>
-                              )}
-                            </Button>
-                          </>
-                        )}
-
-                        {isProcessing && (
-                          <div className="space-y-2">
-                            <Progress value={progress} />
-                            <p className="text-sm text-center text-muted-foreground">
-                              {Math.round(progress)}% complete
-                            </p>
+                            ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* National Sites */}
+                      {nationalSources.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+                            <Globe className="h-4 w-4" />
+                            National Rental Sites ({nationalSources.length})
+                          </h3>
+                          <div className="space-y-2 ml-2">
+                            {nationalSources.map((source) => (
+                              <div
+                                key={source.id}
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <Checkbox
+                                  checked={scrapeSources.includes(source.id)}
+                                  onCheckedChange={() => toggleSource(source.id)}
+                                />
+                                <div
+                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
+                                  title={source.status}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{source.name}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {source.estimatedListings} listings
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{source.description}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Classifieds */}
+                      {classifiedSources.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+                            <Search className="h-4 w-4" />
+                            Classifieds & Marketplaces ({classifiedSources.length})
+                          </h3>
+                          <div className="space-y-2 ml-2">
+                            {classifiedSources.map((source) => (
+                              <div
+                                key={source.id}
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <Checkbox
+                                  checked={scrapeSources.includes(source.id)}
+                                  onCheckedChange={() => toggleSource(source.id)}
+                                />
+                                <div
+                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
+                                  title={source.status}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{source.name}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {source.estimatedListings} listings
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{source.description}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+
+                  {/* Selected Count and Scrape Button */}
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <span className="text-sm text-muted-foreground">{scrapeSources.length} source(s) selected</span>
+                    <div className="flex gap-2">
+                      {scrapeResults && scrapeResults.properties.length > 0 && (
+                        <Button onClick={handleImportScraped} disabled={isProcessing}>
+                          {isProcessing ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Upload className="h-4 w-4 mr-2" />
+                          )}
+                          Import {scrapeResults.properties.length} Properties
+                        </Button>
+                      )}
+                      <Button onClick={handleScrape} disabled={isScraping || scrapeSources.length === 0}>
+                        {isScraping ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Globe className="h-4 w-4 mr-2" />
                         )}
-                      </CardContent>
-                    </Card>
+                        Start Scraping {scrapeSources.length} Source(s)
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Progress */}
+                  {(isScraping || (isProcessing && scrapePhase === "importing")) && (
+                    <div className="space-y-2">
+                      <Progress value={progress} />
+                      <p className="text-sm text-muted-foreground text-center">
+                        {scrapePhase === "scraping"
+                          ? "Scraping..."
+                          : `Importing batch ${currentBatch} of ${totalBatches}...`}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Scrape Results Preview */}
+                  {scrapeResults && (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Scrape Complete</AlertTitle>
+                      <AlertDescription>
+                        Found {scrapeResults.properties.length} properties.
+                        {scrapeResults.errors.length > 0 && ` ${scrapeResults.errors.length} errors occurred.`}
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </CardContent>
               </Card>
             </TabsContent>
 
-            {/* Address Import Tab */}
             <TabsContent value="addresses" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Home className="h-5 w-5" />
-                    Address File Statistics
+                    Import Addresses
                   </CardTitle>
-                  <CardDescription>Data loaded from data/addresses.ts</CardDescription>
+                  <CardDescription>Import property addresses from the local database.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  {addressStats ? (
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-muted rounded-lg">
-                        <div className="text-3xl font-bold">{addressStats.total.toLocaleString()}</div>
-                        <div className="text-sm text-muted-foreground">Total Lines</div>
+                <CardContent className="space-y-4">
+                  {addressStats && (
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{addressStats.total}</div>
+                        <div className="text-sm text-muted-foreground">Total</div>
                       </div>
-                      <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          {addressStats.unique.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Unique Addresses</div>
+                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{addressStats.unique}</div>
+                        <div className="text-sm text-muted-foreground">Unique</div>
                       </div>
-                      <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                        <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
-                          {addressStats.duplicates.toLocaleString()}
-                        </div>
+                      <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{addressStats.duplicates}</div>
                         <div className="text-sm text-muted-foreground">Duplicates</div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Upload className="h-5 w-5" />
-                    Import Addresses
-                  </CardTitle>
-                  <CardDescription>Geocode addresses and insert into Supabase</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button
-                    onClick={handleAddressImport}
-                    disabled={isProcessing || !addressStats}
-                    className="w-full"
-                    size="lg"
-                  >
+                  <Button onClick={handleAddressImport} disabled={isProcessing} className="w-full">
                     {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Importing... {currentBatch > 0 && `(Batch ${currentBatch}/${totalBatches})`}
-                      </>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <>
-                        <MapPin className="mr-2 h-4 w-4" />
-                        Import {addressStats?.unique.toLocaleString()} Addresses
-                      </>
+                      <Upload className="h-4 w-4 mr-2" />
                     )}
+                    Import {addressStats?.unique || 0} Addresses
                   </Button>
-
                   {isProcessing && (
                     <div className="space-y-2">
                       <Progress value={progress} />
-                      <p className="text-sm text-center text-muted-foreground">
-                        {Math.round(progress)}% complete
-                        {currentBatch > 0 && ` - Batch ${currentBatch} of ${totalBatches}`}
+                      <p className="text-sm text-muted-foreground text-center">
+                        Processing batch {currentBatch} of {totalBatches}...
                       </p>
                     </div>
                   )}
@@ -702,73 +1001,45 @@ export default function ImportPage() {
               </Card>
             </TabsContent>
 
-            {/* APN Import Tab */}
             <TabsContent value="apns" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Database className="h-5 w-5" />
-                    APN File Statistics
+                    Import APNs
                   </CardTitle>
-                  <CardDescription>Data loaded from data/apns.ts</CardDescription>
+                  <CardDescription>Import Assessor Parcel Numbers from the local database.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  {apnStats ? (
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-muted rounded-lg">
-                        <div className="text-3xl font-bold">{apnStats.total.toLocaleString()}</div>
-                        <div className="text-sm text-muted-foreground">Total Lines</div>
+                <CardContent className="space-y-4">
+                  {apnStats && (
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{apnStats.total.toLocaleString()}</div>
+                        <div className="text-sm text-muted-foreground">Total</div>
                       </div>
-                      <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          {apnStats.unique.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Unique APNs</div>
+                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{apnStats.unique.toLocaleString()}</div>
+                        <div className="text-sm text-muted-foreground">Unique</div>
                       </div>
-                      <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                        <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
-                          {apnStats.duplicates.toLocaleString()}
-                        </div>
+                      <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                        <div className="text-2xl font-bold">{apnStats.duplicates.toLocaleString()}</div>
                         <div className="text-sm text-muted-foreground">Duplicates</div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Upload className="h-5 w-5" />
-                    Import APNs
-                  </CardTitle>
-                  <CardDescription>Enrich APNs with address data and insert into Supabase</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button onClick={handleAPNImport} disabled={isProcessing || !apnStats} className="w-full" size="lg">
+                  <Button onClick={handleAPNImport} disabled={isProcessing} className="w-full">
                     {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Importing... {currentBatch > 0 && `(Batch ${currentBatch}/${totalBatches})`}
-                      </>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <>
-                        <MapPin className="mr-2 h-4 w-4" />
-                        Import {apnStats?.unique.toLocaleString()} APNs
-                      </>
+                      <Upload className="h-4 w-4 mr-2" />
                     )}
+                    Import {apnStats?.unique.toLocaleString() || 0} APNs
                   </Button>
-
                   {isProcessing && (
                     <div className="space-y-2">
                       <Progress value={progress} />
-                      <p className="text-sm text-center text-muted-foreground">
-                        {Math.round(progress)}% complete
-                        {currentBatch > 0 && ` - Batch ${currentBatch} of ${totalBatches}`}
+                      <p className="text-sm text-muted-foreground text-center">
+                        Processing batch {currentBatch} of {totalBatches}...
                       </p>
                     </div>
                   )}
@@ -811,7 +1082,6 @@ export default function ImportPage() {
                     <div className="text-sm font-medium text-red-700 dark:text-red-300">Failed</div>
                   </div>
                 </div>
-
                 {results.errors.length > 0 && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
@@ -860,35 +1130,6 @@ export default function ImportPage() {
           )}
         </div>
       </section>
-    </div>
-  )
-}
-
-// SourceCard component for individual source selection
-function SourceCard({
-  source,
-  isSelected,
-  onToggle,
-}: { source: RentalSource; isSelected: boolean; onToggle: () => void }) {
-  const statusColors = {
-    active: "bg-green-500",
-    blocked: "bg-red-500",
-    "api-only": "bg-yellow-500",
-  }
-
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-      <Checkbox checked={isSelected} onCheckedChange={onToggle} disabled={source.status !== "active"} />
-      <div className={`h-2 w-2 rounded-full ${statusColors[source.status]}`} title={source.status} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{source.name}</span>
-          <Badge variant="outline" className="text-xs">
-            {source.estimatedListings}
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground truncate">{source.description}</p>
-      </div>
     </div>
   )
 }
