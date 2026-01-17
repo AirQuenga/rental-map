@@ -1,565 +1,540 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { SiteHeader } from "@/components/site-header"
+import { ManualEntryForm } from "@/components/admin/manual-entry-form"
 import {
+  Home,
+  ArrowLeft,
   Upload,
+  Database,
+  Globe,
+  Loader2,
   CheckCircle,
   AlertCircle,
-  Loader2,
-  Database,
-  MapPin,
-  Home,
   Plus,
-  ArrowLeft,
-  Globe,
+  MapPin,
   Search,
+  RefreshCw,
 } from "lucide-react"
-import { parseAPNs, getStats } from "@/data/apns"
-import { parseAddresses, getAddressStats } from "@/data/addresses"
-import { importAPNsToDatabase } from "@/app/actions/import-apns"
-import { importAddressesToDatabase } from "@/app/actions/import-addresses"
-import { scrapeRentalListings, importScrapedProperties } from "@/app/actions/scrape-rentals"
-import { ManualEntryForm } from "@/components/admin/manual-entry-form"
-import Link from "next/link"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { SiteHeader } from "@/components/site-header"
+import { importAPNs, getAPNStats, type ImportResult } from "@/app/actions/import-apns"
+import { importAddresses, getAddressStats } from "@/app/actions/import-addresses"
+import { scrapeRentals, importScrapedProperties, type ScrapeResult } from "@/app/actions/scrape-rentals"
+import { refreshAllProperties, type RefreshResult } from "@/app/actions/refresh-properties"
 
 const SOURCES = [
   // Internal Databases (1)
   {
     id: "known",
-    name: "Known Butte County Properties",
+    name: "Known Properties Database",
     category: "database",
-    status: "active",
-    description: "Local database of verified apartment complexes",
-    estimatedListings: 30,
+    status: "active" as const,
+    estimatedListings: 25,
+    description: "Butte County apartment complexes",
   },
-
   // Local Butte County Sites (8)
   {
-    id: "chicoForRent",
+    id: "hignell",
+    name: "Hignell Companies",
+    category: "local",
+    status: "blocked" as const,
+    estimatedListings: 50,
+    description: "Local property management",
+  },
+  {
+    id: "blueoak",
+    name: "Blue Oak Property Management",
+    category: "local",
+    status: "blocked" as const,
+    estimatedListings: 30,
+    description: "Chico rentals",
+  },
+  {
+    id: "sheraton",
+    name: "Sheraton Properties",
+    category: "local",
+    status: "blocked" as const,
+    estimatedListings: 40,
+    description: "North state rentals",
+  },
+  {
+    id: "fpi",
+    name: "FPI Management",
+    category: "local",
+    status: "blocked" as const,
+    estimatedListings: 35,
+    description: "Apartment communities",
+  },
+  {
+    id: "weidner",
+    name: "Weidner Apartment Homes",
+    category: "local",
+    status: "blocked" as const,
+    estimatedListings: 45,
+    description: "Apartment living",
+  },
+  {
+    id: "chicoforrent",
     name: "ChicoForRent.com",
     category: "local",
-    status: "blocked",
-    description: "Chico-specific rental listings",
-    estimatedListings: 150,
+    status: "blocked" as const,
+    estimatedListings: 60,
+    description: "Local rental listings",
   },
   {
-    id: "rentInChico",
+    id: "rentinchico",
     name: "RentInChico.com",
     category: "local",
-    status: "blocked",
-    description: "Local Chico rental properties",
-    estimatedListings: 120,
+    status: "blocked" as const,
+    estimatedListings: 55,
+    description: "Chico area rentals",
   },
   {
-    id: "csusChico",
-    name: "CSU Chico Off-Campus Housing",
+    id: "eaglepointe",
+    name: "Eaglepointe Paradise",
     category: "local",
-    status: "blocked",
-    description: "Student housing near campus",
-    estimatedListings: 200,
+    status: "blocked" as const,
+    estimatedListings: 20,
+    description: "Paradise apartments",
   },
-  {
-    id: "chicoNewsReview",
-    name: "Chico News & Review Classifieds",
-    category: "local",
-    status: "blocked",
-    description: "Local classifieds section",
-    estimatedListings: 50,
-  },
-  {
-    id: "butteCountyHousing",
-    name: "Butte County Housing Authority",
-    category: "local",
-    status: "api-only",
-    description: "Affordable housing listings",
-    estimatedListings: 75,
-  },
-  {
-    id: "paradisePost",
-    name: "Paradise Post Classifieds",
-    category: "local",
-    status: "blocked",
-    description: "Paradise area rentals",
-    estimatedListings: 40,
-  },
-  {
-    id: "orovilleMR",
-    name: "Oroville Mercury-Register",
-    category: "local",
-    status: "blocked",
-    description: "Oroville local listings",
-    estimatedListings: 35,
-  },
-  {
-    id: "butteCountyBulletin",
-    name: "Butte County Bulletin Board",
-    category: "local",
-    status: "blocked",
-    description: "Community bulletin rentals",
-    estimatedListings: 25,
-  },
-
   // National Rental Sites (26)
   {
     id: "zillow",
-    name: "Zillow Rentals",
+    name: "Zillow",
     category: "national",
-    status: "blocked",
-    description: "Comprehensive rental listings",
+    status: "api-only" as const,
     estimatedListings: 500,
-  },
-  {
-    id: "realtor",
-    name: "Realtor.com Rentals",
-    category: "national",
-    status: "blocked",
-    description: "MLS-powered rentals",
-    estimatedListings: 450,
+    description: "Real estate marketplace",
   },
   {
     id: "apartments",
     name: "Apartments.com",
     category: "national",
-    status: "blocked",
-    description: "Apartments & homes",
+    status: "blocked" as const,
     estimatedListings: 400,
+    description: "Apartment search",
+  },
+  {
+    id: "realtor",
+    name: "Realtor.com",
+    category: "national",
+    status: "api-only" as const,
+    estimatedListings: 350,
+    description: "Real estate listings",
   },
   {
     id: "trulia",
-    name: "Trulia Rentals",
+    name: "Trulia",
     category: "national",
-    status: "blocked",
-    description: "Houses & apartments",
-    estimatedListings: 450,
+    status: "blocked" as const,
+    estimatedListings: 300,
+    description: "Home rentals",
   },
   {
     id: "hotpads",
     name: "HotPads",
     category: "national",
-    status: "blocked",
-    description: "Map-based rental search",
-    estimatedListings: 350,
+    status: "blocked" as const,
+    estimatedListings: 250,
+    description: "Map-based search",
   },
   {
     id: "rent",
     name: "Rent.com",
     category: "national",
-    status: "blocked",
-    description: "National rental search",
-    estimatedListings: 380,
-  },
-  {
-    id: "rentals",
-    name: "Rentals.com",
-    category: "national",
-    status: "blocked",
-    description: "Houses & apartments",
-    estimatedListings: 320,
-  },
-  {
-    id: "apartmentFinder",
-    name: "Apartment Finder",
-    category: "national",
-    status: "blocked",
-    description: "Apartment search engine",
-    estimatedListings: 340,
-  },
-  {
-    id: "apartmentGuide",
-    name: "Apartment Guide",
-    category: "national",
-    status: "blocked",
-    description: "Apartment listings",
-    estimatedListings: 330,
-  },
-  {
-    id: "apartmentList",
-    name: "Apartment List",
-    category: "national",
-    status: "blocked",
-    description: "Personalized search",
-    estimatedListings: 360,
+    status: "blocked" as const,
+    estimatedListings: 200,
+    description: "Apartment finder",
   },
   {
     id: "zumper",
     name: "Zumper",
     category: "national",
-    status: "blocked",
-    description: "Apartment rentals",
-    estimatedListings: 310,
-  },
-  {
-    id: "rentCafe",
-    name: "RENTCafé",
-    category: "national",
-    status: "api-only",
-    description: "Property management listings",
-    estimatedListings: 280,
-  },
-  {
-    id: "forRent",
-    name: "ForRent.com",
-    category: "national",
-    status: "blocked",
-    description: "Apartments & houses",
-    estimatedListings: 290,
-  },
-  {
-    id: "move",
-    name: "Move.com",
-    category: "national",
-    status: "blocked",
-    description: "Rental search platform",
-    estimatedListings: 270,
+    status: "blocked" as const,
+    estimatedListings: 180,
+    description: "Rental platform",
   },
   {
     id: "padmapper",
     name: "PadMapper",
     category: "national",
-    status: "blocked",
-    description: "Map-based search",
-    estimatedListings: 300,
+    status: "blocked" as const,
+    estimatedListings: 150,
+    description: "Map search",
   },
   {
-    id: "rentberry",
-    name: "Rentberry",
+    id: "forrent",
+    name: "ForRent.com",
     category: "national",
-    status: "blocked",
-    description: "Online rental platform",
-    estimatedListings: 240,
+    status: "blocked" as const,
+    estimatedListings: 120,
+    description: "Rental listings",
+  },
+  {
+    id: "rentcafe",
+    name: "RentCafe",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 100,
+    description: "Apartment search",
+  },
+  {
+    id: "apartmentguide",
+    name: "Apartment Guide",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 90,
+    description: "Apartment finder",
+  },
+  {
+    id: "rentpath",
+    name: "RentPath",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 80,
+    description: "Rental network",
   },
   {
     id: "cozy",
-    name: "Cozy.co",
+    name: "Cozy (Apartments.com)",
     category: "national",
-    status: "api-only",
-    description: "Landlord-tenant platform",
-    estimatedListings: 220,
+    status: "blocked" as const,
+    estimatedListings: 70,
+    description: "Rental management",
   },
   {
     id: "avail",
     name: "Avail",
     category: "national",
-    status: "api-only",
-    description: "DIY landlord software",
+    status: "blocked" as const,
+    estimatedListings: 60,
+    description: "Landlord tools",
+  },
+  {
+    id: "turbotenant",
+    name: "TurboTenant",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 55,
+    description: "Landlord software",
+  },
+  {
+    id: "rentberry",
+    name: "Rentberry",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 50,
+    description: "Rental bidding",
+  },
+  {
+    id: "apartmentlist",
+    name: "Apartment List",
+    category: "national",
+    status: "blocked" as const,
     estimatedListings: 200,
+    description: "Personalized search",
   },
   {
-    id: "rentalHousingDeals",
-    name: "Rental Housing Deals",
+    id: "rentals",
+    name: "Rentals.com",
     category: "national",
-    status: "blocked",
-    description: "Rental listings",
-    estimatedListings: 180,
+    status: "blocked" as const,
+    estimatedListings: 150,
+    description: "Rental marketplace",
   },
   {
-    id: "rentler",
-    name: "Rentler",
+    id: "westsiderentals",
+    name: "Westside Rentals",
     category: "national",
-    status: "blocked",
-    description: "Western US rentals",
-    estimatedListings: 210,
+    status: "blocked" as const,
+    estimatedListings: 40,
+    description: "CA rentals",
   },
   {
-    id: "doorsteps",
-    name: "Doorsteps",
+    id: "abodo",
+    name: "ABODO",
     category: "national",
-    status: "blocked",
-    description: "Move.com network",
-    estimatedListings: 190,
-  },
-  {
-    id: "myNewPlace",
-    name: "MyNewPlace",
-    category: "national",
-    status: "blocked",
+    status: "blocked" as const,
+    estimatedListings: 100,
     description: "Apartment search",
-    estimatedListings: 170,
   },
   {
-    id: "rentPath",
-    name: "RentPath",
+    id: "rentjungle",
+    name: "Rent Jungle",
     category: "national",
-    status: "api-only",
-    description: "Multi-site network",
-    estimatedListings: 400,
+    status: "blocked" as const,
+    estimatedListings: 80,
+    description: "Aggregator",
   },
   {
-    id: "realPage",
-    name: "RealPage",
+    id: "housinglist",
+    name: "HousingList",
     category: "national",
-    status: "api-only",
-    description: "Property management",
-    estimatedListings: 350,
+    status: "blocked" as const,
+    estimatedListings: 60,
+    description: "Section 8 listings",
   },
   {
-    id: "yardi",
-    name: "Yardi RentCafe",
+    id: "gosection8",
+    name: "GoSection8",
     category: "national",
-    status: "api-only",
-    description: "Property software",
-    estimatedListings: 320,
+    status: "api-only" as const,
+    estimatedListings: 75,
+    description: "Section 8 housing",
   },
   {
-    id: "appFolio",
-    name: "AppFolio",
+    id: "affordablehousing",
+    name: "AffordableHousing.com",
     category: "national",
-    status: "api-only",
-    description: "Property management",
-    estimatedListings: 280,
+    status: "blocked" as const,
+    estimatedListings: 50,
+    description: "Low income housing",
   },
-
+  {
+    id: "socialserve",
+    name: "Socialserve.com",
+    category: "national",
+    status: "blocked" as const,
+    estimatedListings: 45,
+    description: "Affordable housing",
+  },
+  {
+    id: "hud",
+    name: "HUD Resource Locator",
+    category: "national",
+    status: "api-only" as const,
+    estimatedListings: 30,
+    description: "HUD housing",
+  },
   // Classifieds & Marketplaces (15)
   {
     id: "craigslist",
     name: "Craigslist Chico",
     category: "classifieds",
-    status: "blocked",
+    status: "blocked" as const,
+    estimatedListings: 150,
     description: "Local classifieds",
-    estimatedListings: 300,
   },
   {
     id: "facebook",
     name: "Facebook Marketplace",
     category: "classifieds",
-    status: "blocked",
+    status: "blocked" as const,
+    estimatedListings: 200,
     description: "Social marketplace",
-    estimatedListings: 450,
+  },
+  {
+    id: "fbgroups",
+    name: "Facebook Rental Groups",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 100,
+    description: "Community groups",
   },
   {
     id: "nextdoor",
     name: "Nextdoor",
     category: "classifieds",
-    status: "blocked",
-    description: "Neighborhood network",
-    estimatedListings: 120,
+    status: "blocked" as const,
+    estimatedListings: 50,
+    description: "Neighborhood app",
   },
   {
     id: "oodle",
     name: "Oodle",
     category: "classifieds",
-    status: "blocked",
-    description: "Classified ads aggregator",
-    estimatedListings: 200,
-  },
-  {
-    id: "trovit",
-    name: "Trovit",
-    category: "classifieds",
-    status: "blocked",
-    description: "Search aggregator",
-    estimatedListings: 180,
-  },
-  {
-    id: "nestoria",
-    name: "Nestoria",
-    category: "classifieds",
-    status: "blocked",
-    description: "Property search engine",
-    estimatedListings: 160,
-  },
-  {
-    id: "vast",
-    name: "Vast.com",
-    category: "classifieds",
-    status: "blocked",
-    description: "Classified ads",
-    estimatedListings: 140,
-  },
-  {
-    id: "adsglobe",
-    name: "AdsGlobe",
-    category: "classifieds",
-    status: "blocked",
-    description: "Free classifieds",
-    estimatedListings: 100,
-  },
-  {
-    id: "classifiedAds",
-    name: "Classified Ads",
-    category: "classifieds",
-    status: "blocked",
-    description: "General classifieds",
-    estimatedListings: 130,
+    status: "blocked" as const,
+    estimatedListings: 40,
+    description: "Classifieds aggregator",
   },
   {
     id: "geebo",
     name: "Geebo",
     category: "classifieds",
-    status: "blocked",
-    description: "Safe local classifieds",
-    estimatedListings: 90,
-  },
-  {
-    id: "recycler",
-    name: "Recycler",
-    category: "classifieds",
-    status: "blocked",
-    description: "Online classifieds",
-    estimatedListings: 110,
-  },
-  {
-    id: "pennysaver",
-    name: "PennySaver",
-    category: "classifieds",
-    status: "blocked",
-    description: "Local shopping guide",
-    estimatedListings: 80,
-  },
-  {
-    id: "locanto",
-    name: "Locanto",
-    category: "classifieds",
-    status: "blocked",
-    description: "Free classifieds",
-    estimatedListings: 95,
-  },
-  {
-    id: "backpage",
-    name: "Backpage Alternatives",
-    category: "classifieds",
-    status: "blocked",
-    description: "Classified alternatives",
-    estimatedListings: 70,
+    status: "blocked" as const,
+    estimatedListings: 30,
+    description: "Safe classifieds",
   },
   {
     id: "offerup",
     name: "OfferUp",
     category: "classifieds",
-    status: "blocked",
-    description: "Buy and sell locally",
-    estimatedListings: 150,
+    status: "blocked" as const,
+    estimatedListings: 25,
+    description: "Local marketplace",
   },
-] as const
+  {
+    id: "kijiji",
+    name: "Kijiji",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 20,
+    description: "Classifieds",
+  },
+  {
+    id: "recycler",
+    name: "Recycler",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 15,
+    description: "Free classifieds",
+  },
+  {
+    id: "locanto",
+    name: "Locanto",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 20,
+    description: "Free ads",
+  },
+  {
+    id: "pennysaver",
+    name: "PennySaver",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 15,
+    description: "Local ads",
+  },
+  {
+    id: "classifiedads",
+    name: "ClassifiedAds.com",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 10,
+    description: "Free classifieds",
+  },
+  {
+    id: "americanlisted",
+    name: "AmericanListed",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 15,
+    description: "US classifieds",
+  },
+  {
+    id: "adpost",
+    name: "Adpost",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 10,
+    description: "Global classifieds",
+  },
+  {
+    id: "postlets",
+    name: "Postlets",
+    category: "classifieds",
+    status: "blocked" as const,
+    estimatedListings: 20,
+    description: "Rental posting",
+  },
+]
 
-type SourceStatus = "active" | "blocked" | "api-only"
-type SourceCategory = "database" | "local" | "national" | "classifieds"
+const statusColors = { active: "bg-green-500", blocked: "bg-red-500", "api-only": "bg-yellow-500" }
 
-export default function ImportPage() {
+export default function AdminImportPage() {
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isScraping, setIsScraping] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentBatch, setCurrentBatch] = useState(0)
   const [totalBatches, setTotalBatches] = useState(0)
+  const [results, setResults] = useState<ImportResult | null>(null)
+  const [refreshResults, setRefreshResults] = useState<RefreshResult | null>(null)
+  const [scrapeResults, setScrapeResults] = useState<ScrapeResult | null>(null)
+  const [scrapePhase, setScrapePhase] = useState<"idle" | "scraping" | "importing">("idle")
   const [apnStats, setApnStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
   const [addressStats, setAddressStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
-  const [results, setResults] = useState<{ success: number; failed: number; skipped: number; errors: string[] } | null>(
-    null,
-  )
+  const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
+  const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
   const [logs, setLogs] = useState<string[]>([])
 
-  const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
-  const [scrapeResults, setScrapeResults] = useState<{ properties: any[]; errors: string[] } | null>(null)
-  const [isScraping, setIsScraping] = useState(false)
-  const [scrapePhase, setScrapePhase] = useState<"idle" | "scraping" | "importing">("idle")
-  const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
+  const addLog = (msg: string) => setLogs((prev) => [...prev.slice(-99), `[${new Date().toLocaleTimeString()}] ${msg}`])
 
   useEffect(() => {
-    try {
-      setApnStats(getStats())
-    } catch (e) {
-      console.error("Failed to load APN stats:", e)
-    }
-    try {
-      setAddressStats(getAddressStats())
-    } catch (e) {
-      console.error("Failed to load address stats:", e)
-    }
+    getAPNStats().then(setApnStats)
+    getAddressStats().then(setAddressStats)
   }, [])
 
-  const addLog = (message: string) => {
-    setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`])
+  const filteredSources = useMemo(() => {
+    if (sourceFilter === "all") return SOURCES
+    return SOURCES.filter((s) => s.status === sourceFilter)
+  }, [sourceFilter])
+
+  const databaseSources = useMemo(() => filteredSources.filter((s) => s.category === "database"), [filteredSources])
+  const localSources = useMemo(() => filteredSources.filter((s) => s.category === "local"), [filteredSources])
+  const nationalSources = useMemo(() => filteredSources.filter((s) => s.category === "national"), [filteredSources])
+  const classifiedSources = useMemo(
+    () => filteredSources.filter((s) => s.category === "classifieds"),
+    [filteredSources],
+  )
+
+  const toggleSource = (id: string) => {
+    setScrapeSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
   }
 
-  const runImport = async (
-    type: "apn" | "address",
-    items: string[] | ReturnType<typeof parseAddresses>,
-    importFn: (batch: any[]) => Promise<{ success: number; failed: number; skipped: number; errors: string[] }>,
-  ) => {
+  const handleAPNImport = async () => {
     setIsProcessing(true)
-    setProgress(0)
     setResults(null)
-    setLogs([])
-
+    setProgress(0)
+    addLog("Starting APN import...")
     try {
-      addLog(`Starting ${type} import...`)
-      addLog(`Found ${items.length} unique ${type}s to process`)
-
-      const batchSize = 25
-      const batches = Math.ceil(items.length / batchSize)
-      setTotalBatches(batches)
-
-      let successCount = 0
-      let failedCount = 0
-      let skippedCount = 0
-      const errors: string[] = []
-
-      for (let i = 0; i < batches; i++) {
-        setCurrentBatch(i + 1)
-        const batch = items.slice(i * batchSize, (i + 1) * batchSize)
-        addLog(`Processing batch ${i + 1}/${batches} (${batch.length} ${type}s)...`)
-
-        try {
-          const result = await importFn(batch as any)
-          successCount += result.success
-          failedCount += result.failed
-          skippedCount += result.skipped
-          if (result.errors.length > 0) {
-            const remainingSlots = 200 - errors.length
-            if (remainingSlots > 0) errors.push(...result.errors.slice(0, remainingSlots))
-          }
-          addLog(`Batch ${i + 1}: ${result.success} success, ${result.skipped} skipped, ${result.failed} failed`)
-        } catch (error) {
-          const errMsg = error instanceof Error ? error.message : "Unknown error"
-          addLog(`Batch ${i + 1} failed: ${errMsg.slice(0, 100)}`)
-          failedCount += batch.length
-          if (errors.length < 200) errors.push(`Batch ${i + 1}: ${errMsg.slice(0, 80)}`)
-        }
-        setProgress(((i + 1) / batches) * 100)
-        await new Promise((resolve) => setTimeout(resolve, 500))
-      }
-
-      setResults({ success: successCount, failed: failedCount, skipped: skippedCount, errors })
-      addLog(`Import complete! ${successCount} inserted, ${skippedCount} skipped, ${failedCount} failed`)
+      const result = await importAPNs((p, batch, total) => {
+        setProgress(p)
+        setCurrentBatch(batch)
+        setTotalBatches(total)
+      })
+      setResults(result)
+      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "Unknown error"
-      addLog(`Import failed: ${errMsg}`)
+      addLog(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsProcessing(false)
-      setCurrentBatch(0)
-      setTotalBatches(0)
     }
   }
 
-  const handleAPNImport = () => runImport("apn", parseAPNs(), importAPNsToDatabase)
-  const handleAddressImport = () => runImport("address", parseAddresses(), importAddressesToDatabase)
+  const handleAddressImport = async () => {
+    setIsProcessing(true)
+    setResults(null)
+    setProgress(0)
+    addLog("Starting address import...")
+    try {
+      const result = await importAddresses((p, batch, total) => {
+        setProgress(p)
+        setCurrentBatch(batch)
+        setTotalBatches(total)
+      })
+      setResults(result)
+      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
+    } catch (error) {
+      addLog(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
 
   const handleScrape = async () => {
     setIsScraping(true)
-    setScrapePhase("scraping")
-    setLogs([])
     setScrapeResults(null)
-    setResults(null)
-
+    setScrapePhase("scraping")
+    addLog(`Starting scrape of ${scrapeSources.length} source(s)...`)
     try {
-      addLog("Starting web scrape...")
-      addLog(`Sources: ${scrapeSources.join(", ")}`)
-      const result = await scrapeRentalListings(scrapeSources)
-      addLog(`Scrape complete! Found ${result.properties.length} properties`)
-      if (result.errors.length > 0) result.errors.forEach((err) => addLog(`Error: ${err}`))
-      setScrapeResults({ properties: result.properties, errors: result.errors })
+      const result = await scrapeRentals(scrapeSources)
+      setScrapeResults(result)
+      addLog(`Scrape complete: Found ${result.properties.length} properties`)
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "Unknown error"
-      addLog(`Scrape failed: ${errMsg}`)
+      addLog(`Scrape error: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsScraping(false)
       setScrapePhase("idle")
@@ -567,569 +542,427 @@ export default function ImportPage() {
   }
 
   const handleImportScraped = async () => {
-    if (!scrapeResults?.properties.length) return
+    if (!scrapeResults) return
     setIsProcessing(true)
     setScrapePhase("importing")
-    setProgress(0)
-
+    addLog("Importing scraped properties...")
     try {
-      addLog(`Importing ${scrapeResults.properties.length} scraped properties...`)
-      const batchSize = 10
-      const batches = Math.ceil(scrapeResults.properties.length / batchSize)
-      setTotalBatches(batches)
-
-      let successCount = 0
-      let failedCount = 0
-      let skippedCount = 0
-      const errors: string[] = []
-
-      for (let i = 0; i < batches; i++) {
-        setCurrentBatch(i + 1)
-        const batch = scrapeResults.properties.slice(i * batchSize, (i + 1) * batchSize)
-        addLog(`Importing batch ${i + 1}/${batches}...`)
-
-        try {
-          const result = await importScrapedProperties(batch)
-          successCount += result.success
-          failedCount += result.failed
-          skippedCount += result.skipped
-          if (result.errors.length > 0) errors.push(...result.errors.slice(0, 50))
-          addLog(`Batch ${i + 1}: ${result.success} success, ${result.skipped} skipped, ${result.failed} failed`)
-        } catch (error) {
-          const errMsg = error instanceof Error ? error.message : "Unknown error"
-          addLog(`Batch ${i + 1} failed: ${errMsg.slice(0, 100)}`)
-          failedCount += batch.length
-        }
-        setProgress(((i + 1) / batches) * 100)
-        await new Promise((resolve) => setTimeout(resolve, 500))
-      }
-
-      setResults({ success: successCount, failed: failedCount, skipped: skippedCount, errors })
-      addLog(`Import complete! ${successCount} inserted, ${skippedCount} skipped, ${failedCount} failed`)
+      const result = await importScrapedProperties(scrapeResults.properties, (p, batch, total) => {
+        setProgress(p)
+        setCurrentBatch(batch)
+        setTotalBatches(total)
+      })
+      setResults(result)
+      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "Unknown error"
-      addLog(`Import failed: ${errMsg}`)
+      addLog(`Import error: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsProcessing(false)
       setScrapePhase("idle")
-      setCurrentBatch(0)
-      setTotalBatches(0)
     }
   }
 
-  const toggleSource = (id: string) => {
-    setScrapeSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true)
+    setRefreshResults(null)
+    addLog("Refreshing all property data...")
+    try {
+      const result = await refreshAllProperties()
+      setRefreshResults(result)
+      addLog(`Refresh complete: ${result.updated} updated, ${result.failed} failed out of ${result.total} total`)
+    } catch (error) {
+      addLog(`Refresh error: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
-  const filteredSources = SOURCES.filter((s) => sourceFilter === "all" || s.status === sourceFilter)
-  const databaseSources = filteredSources.filter((s) => s.category === "database")
-  const localSources = filteredSources.filter((s) => s.category === "local")
-  const nationalSources = filteredSources.filter((s) => s.category === "national")
-  const classifiedSources = filteredSources.filter((s) => s.category === "classifieds")
-
-  const statusColors: Record<SourceStatus, string> = {
-    active: "bg-green-500",
-    blocked: "bg-red-500",
-    "api-only": "bg-yellow-500",
+  const renderSourceList = (sources: typeof SOURCES, title: string, icon: React.ReactNode) => {
+    if (sources.length === 0) return null
+    return (
+      <div>
+        <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
+          {icon}
+          {title} ({sources.length})
+        </h3>
+        <div className="space-y-2 ml-2">
+          {sources.map((source) => (
+            <div
+              key={source.id}
+              className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+            >
+              <Checkbox checked={scrapeSources.includes(source.id)} onCheckedChange={() => toggleSource(source.id)} />
+              <div className={`h-3 w-3 rounded-full ${statusColors[source.status]}`} title={source.status} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{source.name}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {source.estimatedListings} listings
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{source.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black transition-colors duration-300">
+    <div className="min-h-screen bg-background">
       <SiteHeader />
+      <main className="container max-w-5xl mx-auto px-6 py-12">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
+          <Link href="/" className="hover:text-foreground transition-colors">
+            <Home className="h-4 w-4" />
+          </Link>
+          <span>/</span>
+          <Link href="/admin" className="hover:text-foreground transition-colors">
+            Admin
+          </Link>
+          <span>/</span>
+          <span className="text-foreground">Import</span>
+        </nav>
 
-      <section className="pt-24 pb-12 px-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-8">
-            <Link href="/" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+        {/* Page Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Link href="/admin">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="flex-1">
+            <h1 className="text-4xl font-bold tracking-tight">Property Data Import</h1>
+            <p className="text-muted-foreground mt-1">Import and manage rental property data</p>
+          </div>
+          <Button variant="outline" onClick={handleRefreshAll} disabled={isRefreshing}>
+            {isRefreshing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Refresh All Data
+          </Button>
+        </div>
+
+        {/* Refresh Results */}
+        {refreshResults && (
+          <Alert className="mb-6">
+            <CheckCircle className="h-4 w-4" />
+            <AlertTitle>Data Refresh Complete</AlertTitle>
+            <AlertDescription>
+              Updated {refreshResults.updated} of {refreshResults.total} properties.
+              {refreshResults.failed > 0 && ` ${refreshResults.failed} failed.`}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Tabs defaultValue="scrape" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="manual" className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Manual Entry
+            </TabsTrigger>
+            <TabsTrigger value="scrape" className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              Web Scrape
+            </TabsTrigger>
+            <TabsTrigger value="addresses" className="flex items-center gap-2">
               <Home className="h-4 w-4" />
-            </Link>
-            <span>/</span>
-            <Link href="/admin" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Admin
-            </Link>
-            <span>/</span>
-            <span>Import</span>
-          </div>
+              Addresses ({addressStats?.unique || 0})
+            </TabsTrigger>
+            <TabsTrigger value="apns" className="flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              APNs ({apnStats?.unique?.toLocaleString() || 0})
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Back button and title */}
-          <div className="flex items-center gap-4 mb-8">
-            <Link href="/admin">
-              <Button variant="ghost" size="icon" className="h-10 w-10">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <h1 className="text-5xl md:text-6xl font-semibold tracking-tight">Property Data Import</h1>
-          </div>
+          <TabsContent value="manual" className="space-y-6">
+            <ManualEntryForm />
+          </TabsContent>
 
-          <Tabs defaultValue="scrape" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="manual" className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Manual Entry
-              </TabsTrigger>
-              <TabsTrigger value="scrape" className="flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                Web Scrape
-              </TabsTrigger>
-              <TabsTrigger value="addresses" className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Addresses ({addressStats?.unique || 0})
-              </TabsTrigger>
-              <TabsTrigger value="apns" className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                APNs ({apnStats?.unique || 0})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="manual" className="space-y-6">
-              <ManualEntryForm />
-            </TabsContent>
-
-            <TabsContent value="scrape" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="h-5 w-5" />
-                    Web Scrape Rental Listings ({SOURCES.length} Sources)
-                  </CardTitle>
-                  <CardDescription>Select sources to scrape. Most major sites block automation.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Filter Buttons */}
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <Label className="text-base font-semibold">
-                      Showing {filteredSources.length} of {SOURCES.length} Sources
-                    </Label>
-                    <div className="flex gap-2 flex-wrap">
-                      <Button
-                        variant={sourceFilter === "all" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSourceFilter("all")}
-                      >
-                        All ({SOURCES.length})
-                      </Button>
-                      <Button
-                        variant={sourceFilter === "active" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSourceFilter("active")}
-                      >
-                        Active ({SOURCES.filter((s) => s.status === "active").length})
-                      </Button>
-                      <Button
-                        variant={sourceFilter === "blocked" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSourceFilter("blocked")}
-                      >
-                        Blocked ({SOURCES.filter((s) => s.status === "blocked").length})
-                      </Button>
-                      <Button
-                        variant={sourceFilter === "api-only" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSourceFilter("api-only")}
-                      >
-                        API Only ({SOURCES.filter((s) => s.status === "api-only").length})
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setScrapeSources(SOURCES.filter((s) => s.status === "active").map((s) => s.id))}
-                    >
-                      Select Active Only
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
-                      Clear All
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setScrapeSources(filteredSources.map((s) => s.id))}
-                    >
-                      Select All Filtered
-                    </Button>
-                  </div>
-
-                  {/* Sources List */}
-                  <ScrollArea className="h-[500px] border rounded-lg p-4">
-                    <div className="space-y-6">
-                      {/* Internal Databases */}
-                      {databaseSources.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
-                            <Database className="h-4 w-4" />
-                            Internal Databases ({databaseSources.length})
-                          </h3>
-                          <div className="space-y-2 ml-2">
-                            {databaseSources.map((source) => (
-                              <div
-                                key={source.id}
-                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                              >
-                                <Checkbox
-                                  checked={scrapeSources.includes(source.id)}
-                                  onCheckedChange={() => toggleSource(source.id)}
-                                />
-                                <div
-                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
-                                  title={source.status}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{source.name}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {source.estimatedListings} listings
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">{source.description}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Local Sites */}
-                      {localSources.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
-                            <MapPin className="h-4 w-4" />
-                            Local Butte County Sites ({localSources.length})
-                          </h3>
-                          <div className="space-y-2 ml-2">
-                            {localSources.map((source) => (
-                              <div
-                                key={source.id}
-                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                              >
-                                <Checkbox
-                                  checked={scrapeSources.includes(source.id)}
-                                  onCheckedChange={() => toggleSource(source.id)}
-                                />
-                                <div
-                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
-                                  title={source.status}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{source.name}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {source.estimatedListings} listings
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">{source.description}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* National Sites */}
-                      {nationalSources.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
-                            <Globe className="h-4 w-4" />
-                            National Rental Sites ({nationalSources.length})
-                          </h3>
-                          <div className="space-y-2 ml-2">
-                            {nationalSources.map((source) => (
-                              <div
-                                key={source.id}
-                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                              >
-                                <Checkbox
-                                  checked={scrapeSources.includes(source.id)}
-                                  onCheckedChange={() => toggleSource(source.id)}
-                                />
-                                <div
-                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
-                                  title={source.status}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{source.name}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {source.estimatedListings} listings
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">{source.description}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Classifieds */}
-                      {classifiedSources.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
-                            <Search className="h-4 w-4" />
-                            Classifieds & Marketplaces ({classifiedSources.length})
-                          </h3>
-                          <div className="space-y-2 ml-2">
-                            {classifiedSources.map((source) => (
-                              <div
-                                key={source.id}
-                                className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                              >
-                                <Checkbox
-                                  checked={scrapeSources.includes(source.id)}
-                                  onCheckedChange={() => toggleSource(source.id)}
-                                />
-                                <div
-                                  className={`h-3 w-3 rounded-full ${statusColors[source.status]}`}
-                                  title={source.status}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{source.name}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {source.estimatedListings} listings
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">{source.description}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-
-                  {/* Selected Count and Scrape Button */}
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <span className="text-sm text-muted-foreground">{scrapeSources.length} source(s) selected</span>
-                    <div className="flex gap-2">
-                      {scrapeResults && scrapeResults.properties.length > 0 && (
-                        <Button onClick={handleImportScraped} disabled={isProcessing}>
-                          {isProcessing ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Upload className="h-4 w-4 mr-2" />
-                          )}
-                          Import {scrapeResults.properties.length} Properties
-                        </Button>
-                      )}
-                      <Button onClick={handleScrape} disabled={isScraping || scrapeSources.length === 0}>
-                        {isScraping ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Globe className="h-4 w-4 mr-2" />
-                        )}
-                        Start Scraping {scrapeSources.length} Source(s)
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Progress */}
-                  {(isScraping || (isProcessing && scrapePhase === "importing")) && (
-                    <div className="space-y-2">
-                      <Progress value={progress} />
-                      <p className="text-sm text-muted-foreground text-center">
-                        {scrapePhase === "scraping"
-                          ? "Scraping..."
-                          : `Importing batch ${currentBatch} of ${totalBatches}...`}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Scrape Results Preview */}
-                  {scrapeResults && (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>Scrape Complete</AlertTitle>
-                      <AlertDescription>
-                        Found {scrapeResults.properties.length} properties.
-                        {scrapeResults.errors.length > 0 && ` ${scrapeResults.errors.length} errors occurred.`}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="addresses" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Home className="h-5 w-5" />
-                    Import Addresses
-                  </CardTitle>
-                  <CardDescription>Import property addresses from the local database.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {addressStats && (
-                    <div className="grid grid-cols-3 gap-4 mb-4">
-                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{addressStats.total}</div>
-                        <div className="text-sm text-muted-foreground">Total</div>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{addressStats.unique}</div>
-                        <div className="text-sm text-muted-foreground">Unique</div>
-                      </div>
-                      <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{addressStats.duplicates}</div>
-                        <div className="text-sm text-muted-foreground">Duplicates</div>
-                      </div>
-                    </div>
-                  )}
-                  <Button onClick={handleAddressImport} disabled={isProcessing} className="w-full">
-                    {isProcessing ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4 mr-2" />
-                    )}
-                    Import {addressStats?.unique || 0} Addresses
-                  </Button>
-                  {isProcessing && (
-                    <div className="space-y-2">
-                      <Progress value={progress} />
-                      <p className="text-sm text-muted-foreground text-center">
-                        Processing batch {currentBatch} of {totalBatches}...
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="apns" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    Import APNs
-                  </CardTitle>
-                  <CardDescription>Import Assessor Parcel Numbers from the local database.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {apnStats && (
-                    <div className="grid grid-cols-3 gap-4 mb-4">
-                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{apnStats.total.toLocaleString()}</div>
-                        <div className="text-sm text-muted-foreground">Total</div>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{apnStats.unique.toLocaleString()}</div>
-                        <div className="text-sm text-muted-foreground">Unique</div>
-                      </div>
-                      <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                        <div className="text-2xl font-bold">{apnStats.duplicates.toLocaleString()}</div>
-                        <div className="text-sm text-muted-foreground">Duplicates</div>
-                      </div>
-                    </div>
-                  )}
-                  <Button onClick={handleAPNImport} disabled={isProcessing} className="w-full">
-                    {isProcessing ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4 mr-2" />
-                    )}
-                    Import {apnStats?.unique.toLocaleString() || 0} APNs
-                  </Button>
-                  {isProcessing && (
-                    <div className="space-y-2">
-                      <Progress value={progress} />
-                      <p className="text-sm text-muted-foreground text-center">
-                        Processing batch {currentBatch} of {totalBatches}...
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          {/* Results */}
-          {results && (
-            <Card className="mt-6">
+          <TabsContent value="scrape" className="space-y-6">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  {results.failed === 0 ? (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-yellow-500" />
-                  )}
-                  Import Results Summary
+                  <Globe className="h-5 w-5" />
+                  Web Scrape Rental Listings ({SOURCES.length} Sources)
                 </CardTitle>
+                <CardDescription>Select sources to scrape. Most major sites block automation.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {results.success.toLocaleString()}
-                    </div>
-                    <div className="text-sm font-medium text-green-700 dark:text-green-300">Inserted</div>
-                  </div>
-                  <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                    <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                      {results.skipped.toLocaleString()}
-                    </div>
-                    <div className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Skipped</div>
-                  </div>
-                  <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
-                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {results.failed.toLocaleString()}
-                    </div>
-                    <div className="text-sm font-medium text-red-700 dark:text-red-300">Failed</div>
+              <CardContent className="space-y-6">
+                {/* Filter Buttons */}
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <Label className="text-base font-semibold">
+                    Showing {filteredSources.length} of {SOURCES.length} Sources
+                  </Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {(["all", "active", "blocked", "api-only"] as const).map((filter) => (
+                      <Button
+                        key={filter}
+                        variant={sourceFilter === filter ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSourceFilter(filter)}
+                      >
+                        {filter === "all"
+                          ? "All"
+                          : filter === "active"
+                            ? "Active"
+                            : filter === "blocked"
+                              ? "Blocked"
+                              : "API Only"}{" "}
+                        ({filter === "all" ? SOURCES.length : SOURCES.filter((s) => s.status === filter).length})
+                      </Button>
+                    ))}
                   </div>
                 </div>
-                {results.errors.length > 0 && (
-                  <Alert variant="destructive">
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScrapeSources(SOURCES.filter((s) => s.status === "active").map((s) => s.id))}
+                  >
+                    Select Active Only
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
+                    Clear All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScrapeSources(filteredSources.map((s) => s.id))}
+                  >
+                    Select All Filtered
+                  </Button>
+                </div>
+
+                {/* Sources List */}
+                <ScrollArea className="h-[500px] border rounded-lg p-4">
+                  <div className="space-y-6">
+                    {renderSourceList(databaseSources, "Internal Databases", <Database className="h-4 w-4" />)}
+                    {renderSourceList(localSources, "Local Butte County Sites", <MapPin className="h-4 w-4" />)}
+                    {renderSourceList(nationalSources, "National Rental Sites", <Globe className="h-4 w-4" />)}
+                    {renderSourceList(classifiedSources, "Classifieds & Marketplaces", <Search className="h-4 w-4" />)}
+                  </div>
+                </ScrollArea>
+
+                {/* Selected Count and Scrape Button */}
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <span className="text-sm text-muted-foreground">{scrapeSources.length} source(s) selected</span>
+                  <div className="flex gap-2">
+                    {scrapeResults && scrapeResults.properties.length > 0 && (
+                      <Button onClick={handleImportScraped} disabled={isProcessing}>
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        Import {scrapeResults.properties.length} Properties
+                      </Button>
+                    )}
+                    <Button onClick={handleScrape} disabled={isScraping || scrapeSources.length === 0}>
+                      {isScraping ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Globe className="h-4 w-4 mr-2" />
+                      )}
+                      Start Scraping {scrapeSources.length} Source(s)
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Progress */}
+                {(isScraping || (isProcessing && scrapePhase === "importing")) && (
+                  <div className="space-y-2">
+                    <Progress value={progress} />
+                    <p className="text-sm text-muted-foreground text-center">
+                      {scrapePhase === "scraping"
+                        ? "Scraping..."
+                        : `Importing batch ${currentBatch} of ${totalBatches}...`}
+                    </p>
+                  </div>
+                )}
+
+                {scrapeResults && (
+                  <Alert>
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>
-                      Errors ({results.errors.length}
-                      {results.errors.length >= 200 ? "+" : ""})
-                    </AlertTitle>
+                    <AlertTitle>Scrape Complete</AlertTitle>
                     <AlertDescription>
-                      <ScrollArea className="h-48 mt-2">
-                        <ul className="list-none space-y-1">
-                          {results.errors.map((error, i) => (
-                            <li
-                              key={i}
-                              className="text-xs font-mono py-1 border-b border-red-200 dark:border-red-800 last:border-0"
-                            >
-                              {error}
-                            </li>
-                          ))}
-                        </ul>
-                      </ScrollArea>
+                      Found {scrapeResults.properties.length} properties.
+                      {scrapeResults.errors.length > 0 && ` ${scrapeResults.errors.length} errors occurred.`}
                     </AlertDescription>
                   </Alert>
                 )}
               </CardContent>
             </Card>
-          )}
+          </TabsContent>
 
-          {/* Logs */}
-          {logs.length > 0 && (
-            <Card className="mt-6">
+          <TabsContent value="addresses" className="space-y-6">
+            <Card>
               <CardHeader>
-                <CardTitle>Import Log</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Home className="h-5 w-5" />
+                  Import Addresses
+                </CardTitle>
+                <CardDescription>Import property addresses from the local database.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-48 rounded border p-4">
-                  <div className="font-mono text-sm space-y-1">
-                    {logs.map((log, i) => (
-                      <div key={i} className="text-muted-foreground">
-                        {log}
-                      </div>
-                    ))}
+              <CardContent className="space-y-4">
+                {addressStats && (
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{addressStats.total}</div>
+                      <div className="text-sm text-muted-foreground">Total</div>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{addressStats.unique}</div>
+                      <div className="text-sm text-muted-foreground">Unique</div>
+                    </div>
+                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{addressStats.duplicates}</div>
+                      <div className="text-sm text-muted-foreground">Duplicates</div>
+                    </div>
                   </div>
-                </ScrollArea>
+                )}
+                <Button onClick={handleAddressImport} disabled={isProcessing} className="w-full">
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  Import {addressStats?.unique || 0} Addresses
+                </Button>
+                {isProcessing && (
+                  <div className="space-y-2">
+                    <Progress value={progress} />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Processing batch {currentBatch} of {totalBatches}...
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          )}
-        </div>
-      </section>
+          </TabsContent>
+
+          <TabsContent value="apns" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Import APNs
+                </CardTitle>
+                <CardDescription>Import Assessor Parcel Numbers from the local database.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {apnStats && (
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{apnStats.total.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">Total</div>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{apnStats.unique.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">Unique</div>
+                    </div>
+                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                      <div className="text-2xl font-bold">{apnStats.duplicates.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">Duplicates</div>
+                    </div>
+                  </div>
+                )}
+                <Button onClick={handleAPNImport} disabled={isProcessing} className="w-full">
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  Import {apnStats?.unique.toLocaleString() || 0} APNs
+                </Button>
+                {isProcessing && (
+                  <div className="space-y-2">
+                    <Progress value={progress} />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Processing batch {currentBatch} of {totalBatches}...
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Results */}
+        {results && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {results.failed === 0 ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+                )}
+                Import Results Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {results.success.toLocaleString()}
+                  </div>
+                  <div className="text-sm font-medium text-green-700 dark:text-green-300">Inserted</div>
+                </div>
+                <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                    {results.skipped.toLocaleString()}
+                  </div>
+                  <div className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Skipped</div>
+                </div>
+                <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                    {results.failed.toLocaleString()}
+                  </div>
+                  <div className="text-sm font-medium text-red-700 dark:text-red-300">Failed</div>
+                </div>
+              </div>
+              {results.errors.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium mb-2 text-destructive">Errors ({results.errors.length}):</h4>
+                  <ScrollArea className="h-40 border rounded-lg p-3 bg-destructive/5">
+                    {results.errors.slice(0, 50).map((err, i) => (
+                      <div key={i} className="text-sm text-destructive py-1 font-mono">
+                        {err}
+                      </div>
+                    ))}
+                    {results.errors.length > 50 && (
+                      <div className="text-sm text-muted-foreground">...and {results.errors.length - 50} more</div>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Logs */}
+        {logs.length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Import Log</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-48 rounded border p-4">
+                <div className="font-mono text-sm space-y-1">
+                  {logs.map((log, i) => (
+                    <div key={i} className="text-muted-foreground">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
+      </main>
     </div>
   )
 }

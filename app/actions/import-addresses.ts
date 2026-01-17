@@ -1,8 +1,22 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import type { ParsedAddress } from "@/data/addresses"
+import { parseAddresses, getAddressStats as getAddressStatsFromData, type ParsedAddress } from "@/data/addresses"
 import { FMR_2026, UTILITY_RATES_2026 } from "@/config/fmr-2026"
+
+export async function getAddressStats() {
+  return getAddressStatsFromData()
+}
+
+export async function importAddresses(): Promise<{
+  success: number
+  failed: number
+  skipped: number
+  errors: string[]
+}> {
+  const addresses = parseAddresses()
+  return importAddressesToDatabase(addresses)
+}
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -158,7 +172,7 @@ function extractBedroomsFromAddress(address: string): number {
 /**
  * Import addresses with full field population
  */
-export async function importAddressesToDatabase(addresses: ParsedAddress[]): Promise<{
+async function importAddressesToDatabase(addresses: ParsedAddress[]): Promise<{
   success: number
   failed: number
   skipped: number

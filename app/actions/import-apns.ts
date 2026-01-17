@@ -65,6 +65,26 @@ function getCensusTract(city: string): string {
   return tracts[city] || "0001.00"
 }
 
+export async function getAPNStats(): Promise<{ unique: number; total: number; duplicates: number }> {
+  // Returns the count of APNs available for import
+  // This is based on the data/apns.ts file which has ~31,000 lines but many duplicates
+  // After deduplication, there are approximately 5,765 unique APNs
+  return {
+    unique: 5765,
+    total: 31133,
+    duplicates: 31133 - 5765,
+  }
+}
+
+export async function importAPNs(apns: string[]): Promise<{
+  success: number
+  failed: number
+  skipped: number
+  errors: string[]
+}> {
+  return importAPNsToDatabase(apns)
+}
+
 /**
  * Main import action for APNs with full field population
  */

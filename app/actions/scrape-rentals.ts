@@ -955,3 +955,7 @@ export const RENTAL_SOURCES: Record<string, RentalSource> = {
     estimatedListings: 150,
   },
 }
+
+export async function scrapeRentals(sources: string[] = ["known"]) {
+  return scrapeRentalListings(sources)
+}
