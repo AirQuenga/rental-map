@@ -1,8 +1,5 @@
 # Rental Map
 
-[![Deployed by Quenga Designs](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/airquenga-7484s-projects/v0-rental-market-map)
-[![Built by Marcel Quenga](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/oKFyDnLggYO)
-
 ## Overview
 
 This is a web-based application designed to collect, organize, and visualize rental property listings across Butte County and surrounding areas. It serves as a centralized tool for managing rental data sourced from internal databases, local listings, national platforms, and classified ads.
