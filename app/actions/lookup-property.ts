@@ -164,12 +164,11 @@ export async function lookupAddress(address: string): Promise<LookupResult> {
     .select("*")
     .ilike("address", `%${cleanAddress.split(",")[0]}%`)
     .limit(1)
-    .single()
 
-  if (existingByAddress) {
+  if (existingByAddress && existingByAddress.length > 0) {
     return {
       success: true,
-      property: existingByAddress,
+      property: existingByAddress[0],
       message: "Found existing property in database",
       source: "database",
     }
@@ -287,12 +286,11 @@ export async function lookupAPN(apn: string): Promise<LookupResult> {
     .select("*")
     .eq("apn", cleanAPN)
     .limit(1)
-    .single()
 
-  if (existingByAPN) {
+  if (existingByAPN && existingByAPN.length > 0) {
     return {
       success: true,
-      property: existingByAPN,
+      property: existingByAPN[0],
       message: "Found existing property in database",
       source: "database",
     }
@@ -304,12 +302,11 @@ export async function lookupAPN(apn: string): Promise<LookupResult> {
     .select("*")
     .ilike("apn", `%${cleanAPN}%`)
     .limit(1)
-    .single()
 
-  if (partialMatch) {
+  if (partialMatch && partialMatch.length > 0) {
     return {
       success: true,
-      property: partialMatch,
+      property: partialMatch[0],
       message: "Found property with similar APN",
       source: "database_partial",
     }

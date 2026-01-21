@@ -5,6 +5,72 @@ import { FMR_2026, UTILITY_RATES_2026 } from "@/config/fmr-2026"
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Rate limiting configuration
+const RATE_LIMIT_CONFIG = {
+  minDelayBetweenRequests: 30000, // 30 seconds minimum between requests
+  maxDelayBetweenRequests: 45000, // 45 seconds maximum (adds randomness)
+  retryDelay: 60000, // 1 minute wait on rate limit errors
+  maxRetries: 3,
+  requestTimeout: 15000, // 15 second timeout per request
+}
+
+// Browser-like headers to avoid bot detection
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Cache-Control": "no-cache",
+  "Pragma": "no-cache",
+  "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"Windows"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+}
+
+/**
+ * Get a randomized delay between min and max to appear more human-like
+ */
+function getRandomDelay(): number {
+  const { minDelayBetweenRequests, maxDelayBetweenRequests } = RATE_LIMIT_CONFIG
+  return Math.floor(Math.random() * (maxDelayBetweenRequests - minDelayBetweenRequests)) + minDelayBetweenRequests
+}
+
+/**
+ * Make a rate-limited fetch request with retry logic
+ */
+async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response | null> {
+  try {
+    const response = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(RATE_LIMIT_CONFIG.requestTimeout),
+    })
+    
+    // Handle rate limiting responses
+    if (response.status === 429 || response.status === 403) {
+      if (retryCount < RATE_LIMIT_CONFIG.maxRetries) {
+        console.log(`[v0] Rate limited, waiting ${RATE_LIMIT_CONFIG.retryDelay / 1000}s before retry ${retryCount + 1}/${RATE_LIMIT_CONFIG.maxRetries}`)
+        await delay(RATE_LIMIT_CONFIG.retryDelay)
+        return rateLimitedFetch(url, retryCount + 1)
+      }
+      return null
+    }
+    
+    return response
+  } catch (error) {
+    if (retryCount < RATE_LIMIT_CONFIG.maxRetries) {
+      console.log(`[v0] Request failed, retrying in ${RATE_LIMIT_CONFIG.retryDelay / 1000}s`)
+      await delay(RATE_LIMIT_CONFIG.retryDelay)
+      return rateLimitedFetch(url, retryCount + 1)
+    }
+    return null
+  }
+}
+
 interface ScrapedProperty {
   address: string
   city: string
@@ -344,12 +410,10 @@ async function scrapeRentInChico(): Promise<ScrapedProperty[]> {
   return properties
 }
 
-// Rate limiting configuration - 30 seconds between requests to avoid detection
-const RATE_LIMIT_DELAY = 30000 // 30 seconds
-
 /**
  * Main scraping function that aggregates from multiple sources
- * Uses 30-second delays between requests to avoid bot detection
+ * Uses randomized delays (30-45 seconds) between requests to mimic human behavior
+ * and avoid bot detection. Includes retry logic for rate-limited requests.
  */
 export async function scrapeRentalListings(
   sources: string[] = ["known"],
@@ -368,12 +432,12 @@ export async function scrapeRentalListings(
     onProgress?.(`Processing ${source.name}...`, sourceIndex, totalSources)
 
     if (source.status === "blocked") {
-      errors.push(`${source.name}: Site blocks automated scraping - visit manually`)
+      errors.push(`${source.name}: Site blocks automated scraping - visit manually and use Manual Entry`)
       continue
     }
 
     if (source.status === "api-only") {
-      errors.push(`${source.name}: Requires API key - manual setup needed`)
+      errors.push(`${source.name}: Requires API key configuration`)
       continue
     }
 
@@ -385,15 +449,16 @@ export async function scrapeRentalListings(
           properties = await scrapeRentInChico()
           break
         default:
-          errors.push(`${source.name}: Scraper not implemented yet`)
+          errors.push(`${source.name}: Scraper not implemented - visit site manually`)
       }
 
       allProperties.push(...properties)
       
-      // Apply rate limiting - wait 30 seconds between sources to avoid detection
+      // Apply randomized rate limiting to mimic human browsing patterns
       if (sourceIndex < totalSources && sources.length > 1) {
-        onProgress?.(`Rate limiting: waiting 30 seconds before next source...`, sourceIndex, totalSources)
-        await delay(RATE_LIMIT_DELAY)
+        const waitTime = getRandomDelay()
+        onProgress?.(`Rate limiting: waiting ${Math.round(waitTime / 1000)}s before next source...`, sourceIndex, totalSources)
+        await delay(waitTime)
       }
     } catch (error) {
       errors.push(`${source.name}: ${error instanceof Error ? error.message : "Unknown error"}`)
